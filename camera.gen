@@ -1,0 +1,45 @@
+/*/
+ * Copyright (c) 2019 LAAS/CNRS
+ * All rights reserved.
+ *
+ * Redistribution  and  use  in  source  and binary  forms,  with  or  without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   1. Redistributions of  source  code must retain the  above copyright
+ *      notice and this list of conditions.
+ *   2. Redistributions in binary form must reproduce the above copyright
+ *      notice and  this list of  conditions in the  documentation and/or
+ *      other materials provided with the distribution.
+ *
+ * THE SOFTWARE  IS PROVIDED "AS IS"  AND THE AUTHOR  DISCLAIMS ALL WARRANTIES
+ * WITH  REGARD   TO  THIS  SOFTWARE  INCLUDING  ALL   IMPLIED  WARRANTIES  OF
+ * MERCHANTABILITY AND  FITNESS.  IN NO EVENT  SHALL THE AUTHOR  BE LIABLE FOR
+ * ANY  SPECIAL, DIRECT,  INDIRECT, OR  CONSEQUENTIAL DAMAGES  OR  ANY DAMAGES
+ * WHATSOEVER  RESULTING FROM  LOSS OF  USE, DATA  OR PROFITS,  WHETHER  IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR  OTHER TORTIOUS ACTION, ARISING OUT OF OR
+ * IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *
+ *                                                  Martin Jacquet - June 2020
+ */
+#ifndef OR_CAMERA
+#define OR_CAMERA
+
+// #include "or/sensor/image.idl"
+#include "image.idl"
+
+interface or_camera {
+
+  struct info {
+    unsigned short frequency;
+    boolean started;
+  };
+
+  native pipe;  // encapsulate the pipe streaming from the device
+  native data;  // data structure for the image specific to the device
+
+  port out  or::sensor::frame         frame;
+  port out  or::sensor::intrinsics    intrinsics;
+  port out  or::sensor::extrinsics    extrinsics;
+};
+
+#endif /* OR_CAMERA */

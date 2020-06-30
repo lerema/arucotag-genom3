@@ -1,0 +1,110 @@
+/*/
+ * Copyright (c) 2020 LAAS/CNRS
+ * All rights reserved.
+ *
+ * Redistribution  and  use  in  source  and binary  forms,  with  or  without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   1. Redistributions of  source  code must retain the  above copyright
+ *      notice and this list of conditions.
+ *   2. Redistributions in binary form must reproduce the above copyright
+ *      notice and  this list of  conditions in the  documentation and/or
+ *      other materials provided with the distribution.
+ *
+ * THE SOFTWARE  IS PROVIDED "AS IS"  AND THE AUTHOR  DISCLAIMS ALL WARRANTIES
+ * WITH  REGARD   TO  THIS  SOFTWARE  INCLUDING  ALL   IMPLIED  WARRANTIES  OF
+ * MERCHANTABILITY AND  FITNESS.  IN NO EVENT  SHALL THE AUTHOR  BE LIABLE FOR
+ * ANY  SPECIAL, DIRECT,  INDIRECT, OR  CONSEQUENTIAL DAMAGES  OR  ANY DAMAGES
+ * WHATSOEVER  RESULTING FROM  LOSS OF  USE, DATA  OR PROFITS,  WHETHER  IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR  OTHER TORTIOUS ACTION, ARISING OUT OF OR
+ * IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *
+ *                                                  Martin Jacquet - June 2020
+ */
+/* ---- Includes ---------------------------------------------------------- */
+#pragma require "openrobots2-idl >= 2.0"
+
+#include "or/pose/pose_estimator.gen"
+#include "or/time/time.idl"
+// #include "or/sensor/camera.gen"
+#include "camera.gen"
+
+/* ---- Component declaration --------------------------------------------- */
+component arucotag {
+    version         "1.0";
+    email           "martin.jacquet@laas.fr";
+    lang			"c";
+    require         "genom3 >= 2.99.26";
+    codels-require  "opencv";
+
+    /* ---- Interfaces ---------------------------------------------------- */
+    uses    or_camera;
+
+    /* ---- Exceptions ---------------------------------------------------- */
+    exception e_input { string<128> what; };
+    exception e_mem { string<128> what; };
+    exception e_sys { short code; string<128> what; };
+
+    /* ---- Types --------------------------------------------------------- */
+    native calib;
+    native detector;
+
+    native log_s;
+
+    struct portinfo_s {
+      string<128> name;
+      or::time::ts last;
+    };
+
+    /* ---- Ports --------------------------------------------------------- */
+    port out or_pose_estimator::state pose;
+    /* interfaces ports:
+     *  port in   or::sensor::frame         frame;
+     *  port in   or::sensor::intrinsics    intrinsics;
+     *  port in   or::sensor::extrinsics    extrinsics;
+     */
+
+    /* ---- IDS ----------------------------------------------------------- */
+    ids {
+        float length;
+        calib calib;
+        detector tags;
+
+        portinfo_s ports;
+        log_s log;
+    };
+
+    const unsigned short detect_period = 10;
+    /* ---- Main task ----------------------------------------------------- */
+    task main{
+        period detect_period ms;
+        codel<start> main_start(out ::ids, in intrinsics, in frame)
+            yield pause::start, wait;
+
+        codel<wait> main_wait(in length)
+            yield pause::wait, detect;
+
+        codel<detect> main_detect(in frame, in length, in calib, out tags, out pose)
+            yield pause::wait;
+    };
+
+    /* ---- Getters/Setters ----------------------------------------------- */
+    attribute set_length(in length = : "Length of tags");
+
+    /* ---- Logging ------------------------------------------------------- */
+    function log(in string<64> path = "/tmp/arucotags.log": "Log file name",
+                 in unsigned long decimation = 1: "Reduced logging frequency") {
+        throw e_sys;
+        codel log_start(in path, in decimation, inout log);
+    };
+
+    function log_stop() {
+        codel log_stop(out log);
+    };
+
+    function log_info(out unsigned long miss = : "Missed log entries",
+                      out unsigned long total = : "Total log entries") {
+        codel log_info(in log, out miss, out total);
+    };
+
+};
