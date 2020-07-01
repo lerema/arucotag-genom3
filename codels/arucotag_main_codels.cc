@@ -73,6 +73,7 @@ main_start(arucotag_ids *ids, const arucotag_intrinsics *intrinsics,
 genom_event
 main_wait(float length, const genom_context self)
 {
+    cout << "haha" << endl;
     if (length == 0)
         return arucotag_pause_wait;
     else
