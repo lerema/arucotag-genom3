@@ -87,7 +87,7 @@ except KeyError:
     exit()
 
 marker = aruco.drawMarker(dict, args.index, 700)
-markername = args.aruco_dict + '_' + str(args.index)
+markername = args.aruco_dict.replace('DICT', 'aruco') + '_' + str(args.index)
 if not args.gazebo:
     cv2.imwrite(markername + '.png', marker)
 else:
