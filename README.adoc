@@ -226,7 +226,7 @@ a|.Outputs
 |===
 a|.Context
 [disc]
-  * Frequency 100.0 _Hz_
+  * Frequency 20.0 _Hz_
 * Reads port `<<frame>>`
 * Reads port `<<intrinsics>>`
 * Updates port `<<pose>>`

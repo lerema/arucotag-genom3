@@ -34,12 +34,13 @@ using namespace std;
 using namespace cv;
 
 struct  arucotag_calib {
-    Mat K_1 = Mat::zeros(Size(3,3), CV_32F);
+    Mat K = Mat::zeros(Size(3,3), CV_32F);
     Mat D = Mat::zeros(Size(1,5), CV_32F);
 };
 
 struct arucotag_detector {
+    Mat frame;
     vector<int> ids;
     vector<vector<Point2f>> corners;
-    Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_50);
+    Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250);
 };

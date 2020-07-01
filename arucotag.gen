@@ -74,18 +74,18 @@ component arucotag {
         log_s log;
     };
 
-    const unsigned short detect_period = 10;
+    const unsigned short detect_period = 50;
     /* ---- Main task ----------------------------------------------------- */
     task main{
         period detect_period ms;
-        codel<start> main_start(out ::ids, in intrinsics, in frame)
-            yield pause::start, wait;
+        codel<start> main_start(out ::ids)
+            yield wait;
 
-        codel<wait> main_wait(in length)
+        codel<wait> main_wait(in length, in intrinsics, in frame, out calib)
             yield pause::wait, detect;
 
         codel<detect> main_detect(in frame, in length, in calib, out tags, out pose)
-            yield pause::wait;
+            yield pause::detect;
     };
 
     /* ---- Getters/Setters ----------------------------------------------- */
