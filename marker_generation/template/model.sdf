@@ -1,23 +1,23 @@
 <?xml version='1.0'?>
 <sdf version='1.6'>
-  <model name='TEMPLATE_MARKER'>
-    <link name='main'>
-    <pose frame=''>0 0 0 0 0 0</pose>
-      <visual name='main_visual'>
-        <geometry>
-          <box>
-          <size>TEMPLATE_LENGTH TEMPLATE_LENGTH 0.001</size>
-          </box>
-        </geometry>
-           <material>
-          <script>
-            <uri>model://TEMPLATE_MARKER/materials/scripts</uri>
-            <uri>model://TEMPLATE_MARKER/materials/textures</uri>
-            <name>TEMPLATE_MARKER/Marker</name>
-          </script>
-        </material>
-      </visual>
-     </link>
-    <static>1</static>
-  </model>
+    <model name='TEMPLATE_MARKER'>
+        <link name='main'>
+            <pose frame=''>0 0 0 0 0 0</pose>
+            <visual name='main_visual'>
+                <geometry>
+                    <box>
+                        <size>TEMPLATE_LENGTH TEMPLATE_LENGTH 0.001</size>
+                    </box>
+                </geometry>
+                <material>
+                    <script>
+                        <uri>model://TEMPLATE_MARKER/materials/scripts</uri>
+                        <uri>model://TEMPLATE_MARKER/materials/textures</uri>
+                        <name>TEMPLATE_MARKER/Marker</name>
+                    </script>
+                </material>
+            </visual>
+        </link>
+        <static>1</static>
+    </model>
 </sdf>

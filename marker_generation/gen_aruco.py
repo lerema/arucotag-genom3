@@ -30,89 +30,93 @@ from os.path import join, exists, expanduser
 from shutil import rmtree
 import argparse
 
-home = expanduser('~')
+home = expanduser("~")
 
-parser = argparse.ArgumentParser(description='Generate aruco source files.')
-parser.add_argument('index', help='Id of marker to draw.', type=int)
+parser = argparse.ArgumentParser(description="Generate aruco source files.")
+parser.add_argument("index", help="Id of marker to draw.", type=int)
 parser.add_argument(
-    '-l', dest='length', help='Size of gazebo model (meter).', default=1.0, type=float
+    "-l", dest="length", help="Size of gazebo model (meter).", default=1.0, type=float
 )
 parser.add_argument(
-    '-g', dest='gazebo', help='Generate gazebo model.', action='store_true'
+    "-g", dest="gazebo", help="Generate gazebo model.", action="store_true"
 )
 parser.add_argument(
-    '-d',
-    dest='aruco_dict',
-    help='Dictionary to uses. List of available dicts can be found in the provided README.',
-    default='DICT_6X6_250',
+    "-d",
+    dest="aruco_dict",
+    help="Dictionary to uses. List of available dicts can be found in the provided README.",
+    default="DICT_6X6_250",
     type=str,
 )
 parser.add_argument(
-    '-p',
-    dest='path',
-    help='Gazebo model marker output path.',
-    default=join(home,'.gazebo/models'),
+    "-p",
+    dest="path",
+    help="Gazebo model marker output path.",
+    default=join(home, ".gazebo/models"),
     type=str,
 )
 args = parser.parse_args()
 
 # Dico
 dic_o_carré = {
-    'DICT_4X4_50': aruco.DICT_4X4_50,
-    'DICT_4X4_100': aruco.DICT_4X4_100,
-    'DICT_4X4_250': aruco.DICT_4X4_250,
-    'DICT_4X4_1000': aruco.DICT_4X4_1000,
-    'DICT_5X5_50': aruco.DICT_5X5_50,
-    'DICT_5X5_100': aruco.DICT_5X5_100,
-    'DICT_5X5_250': aruco.DICT_5X5_250,
-    'DICT_5X5_1000': aruco.DICT_5X5_1000,
-    'DICT_6X6_50': aruco.DICT_6X6_50,
-    'DICT_6X6_100': aruco.DICT_6X6_100,
-    'DICT_6X6_250': aruco.DICT_6X6_250,
-    'DICT_6X6_1000': aruco.DICT_6X6_1000,
-    'DICT_7X7_50': aruco.DICT_7X7_50,
-    'DICT_7X7_100': aruco.DICT_7X7_100,
-    'DICT_7X7_250': aruco.DICT_7X7_250,
-    'DICT_7X7_1000': aruco.DICT_7X7_1000,
-    'DICT_ARUCO_ORIGINAL': aruco.DICT_ARUCO_ORIGINAL,
-    'DICT_APRILTAG_16h5': aruco.DICT_APRILTAG_16h5,
-    'DICT_APRILTAG_25h9': aruco.DICT_APRILTAG_25h9,
-    'DICT_APRILTAG_36h10': aruco.DICT_APRILTAG_36h10,
-    'DICT_APRILTAG_36h11': aruco.DICT_APRILTAG_36h11,
+    "DICT_4X4_50": aruco.DICT_4X4_50,
+    "DICT_4X4_100": aruco.DICT_4X4_100,
+    "DICT_4X4_250": aruco.DICT_4X4_250,
+    "DICT_4X4_1000": aruco.DICT_4X4_1000,
+    "DICT_5X5_50": aruco.DICT_5X5_50,
+    "DICT_5X5_100": aruco.DICT_5X5_100,
+    "DICT_5X5_250": aruco.DICT_5X5_250,
+    "DICT_5X5_1000": aruco.DICT_5X5_1000,
+    "DICT_6X6_50": aruco.DICT_6X6_50,
+    "DICT_6X6_100": aruco.DICT_6X6_100,
+    "DICT_6X6_250": aruco.DICT_6X6_250,
+    "DICT_6X6_1000": aruco.DICT_6X6_1000,
+    "DICT_7X7_50": aruco.DICT_7X7_50,
+    "DICT_7X7_100": aruco.DICT_7X7_100,
+    "DICT_7X7_250": aruco.DICT_7X7_250,
+    "DICT_7X7_1000": aruco.DICT_7X7_1000,
+    "DICT_ARUCO_ORIGINAL": aruco.DICT_ARUCO_ORIGINAL,
+    "DICT_APRILTAG_16h5": aruco.DICT_APRILTAG_16h5,
+    "DICT_APRILTAG_25h9": aruco.DICT_APRILTAG_25h9,
+    "DICT_APRILTAG_36h10": aruco.DICT_APRILTAG_36h10,
+    "DICT_APRILTAG_36h11": aruco.DICT_APRILTAG_36h11,
 }
 try:
     dict = aruco.Dictionary_get(dic_o_carré[args.aruco_dict])
 except KeyError:
-    print('Invalid dictionary.')
+    print("Invalid dictionary.")
     exit()
 
 marker = aruco.drawMarker(dict, args.index, 700)
-markername = args.aruco_dict.replace('DICT', 'aruco') + '_' + str(args.index)
+markername = args.aruco_dict.replace("DICT", "aruco") + "_" + str(args.index)
 if not args.gazebo:
-    cv2.imwrite(markername + '.png', marker)
+    cv2.imwrite(markername + ".png", marker)
 else:
     path = join(args.path, markername)
     if exists(path):
         rmtree(path)
     makedirs(path)
-    makedirs(join(path, 'materials'))
-    makedirs(join(path, 'materials', 'scripts'))
-    makedirs(join(path, 'materials', 'textures'))
+    makedirs(join(path, "materials"))
+    makedirs(join(path, "materials", "scripts"))
+    makedirs(join(path, "materials", "textures"))
 
-    cv2.imwrite(join(path, 'materials', 'textures', markername + '.png'), marker)
+    cv2.imwrite(join(path, "materials", "textures", markername + ".png"), marker)
 
-    with open('template/model.sdf', 'r') as f:
+    with open("template/model.sdf", "r") as f:
         sdf_template = f.read()
-    with open('template/model.config', 'r') as f:
+    with open("template/model.config", "r") as f:
         config_template = f.read()
-    with open('template/template.material', 'r') as f:
+    with open("template/template.material", "r") as f:
         material_template = f.read()
 
-    with open(join(path, 'model.sdf'), 'w') as f:
-        f.write(sdf_template.replace('TEMPLATE_MARKER', markername).replace('TEMPLATE_LENGTH', str(args.length)))
+    with open(join(path, "model.sdf"), "w") as f:
+        f.write(
+            sdf_template.replace("TEMPLATE_MARKER", markername).replace(
+                "TEMPLATE_LENGTH", str(args.length)
+            )
+        )
 
-    with open(join(path, 'model.config'), 'w') as f:
-        f.write(config_template.replace('TEMPLATE_MARKER', markername))
+    with open(join(path, "model.config"), "w") as f:
+        f.write(config_template.replace("TEMPLATE_MARKER", markername))
 
-    with open(join(path, 'materials', 'scripts', markername+ '.material'), 'w') as f:
-        f.write(material_template.replace('TEMPLATE_MARKER', markername))
+    with open(join(path, "materials", "scripts", markername + ".material"), "w") as f:
+        f.write(material_template.replace("TEMPLATE_MARKER", markername))
