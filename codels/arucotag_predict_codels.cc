@@ -154,7 +154,7 @@ predict_main(arucotag_detector **tags, arucotag_predictor **kalman,
             2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz,     2*qy*qz - 2*qx*qw,
             2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy
     );
-    r = r.inv();
+    r = r.t();
     float tx = -drone->data(self)->pos._value.x;
     float ty = -drone->data(self)->pos._value.y;
     float tz = -drone->data(self)->pos._value.z;
