@@ -29,6 +29,12 @@
 #include "opencv2/aruco.hpp"
 
 #include <iostream>
+#include <sys/time.h>
+#include <iostream>
+#include <aio.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <err.h>
 
 using namespace std;
 using namespace cv;
@@ -40,7 +46,50 @@ struct  arucotag_calib {
 
 struct arucotag_detector {
     Mat frame;
+    bool new_detection;
     vector<int> ids;
-    vector<vector<Point2f>> corners;
+    vector<Vec3d> translations;
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250);
 };
+
+struct arucotag_predictor {
+    KalmanFilter kf;
+    Mat C_T_B;
+    Mat state;
+};
+
+struct arucotag_log_s {
+    struct aiocb req;
+    char buffer[4096];
+    bool pending, skipped;
+    uint32_t decimation;
+    size_t missed, total;
+    arucotag_log_s() {
+        this->req.aio_fildes = -1;
+        this->req.aio_buf = this->buffer;
+    }
+    # define arucotag_logfmt	"%g "
+    # define arucotag_log_header                                            \
+        "ts meas x y z vx vy vz "
+    # define arucotag_log_fmt                                               \
+        "%ld.%09ld %i "                                                     \
+        arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
+        arucotag_logfmt arucotag_logfmt arucotag_logfmt
+};
+
+static inline genom_event
+arucotag_e_sys_error(const char *s, genom_context self)
+{
+    arucotag_e_sys_detail d;
+    size_t l = 0;
+
+    d.code = errno;
+    if (s) {
+        strncpy(d.what, s, sizeof(d.what) - 3);
+        l = strlen(s);
+        strcpy(d.what + l, ": ");
+        l += 2;
+    }
+    if (strerror_r(d.code, d.what + l, sizeof(d.what) - l)) { /* ignore error*/; }
+    return arucotag_e_sys(&d, self);
+}

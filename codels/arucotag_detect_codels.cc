@@ -27,34 +27,35 @@
 
 #include "codels.hpp"
 
-/* --- Task main -------------------------------------------------------- */
+/* --- Task detect ------------------------------------------------------ */
 
 
-/** Codel main_start of task main.
+/** Codel detect_start of task detect.
  *
  * Triggered by arucotag_start.
  * Yields to arucotag_wait.
  */
 genom_event
-main_start(arucotag_ids *ids, const genom_context self)
+detect_start(arucotag_ids *ids, const genom_context self)
 {
     ids->length = 0;
     ids->tags = new arucotag_detector();
     ids->calib = new arucotag_calib();
+    ids->log = new arucotag_log_s();
 
     return arucotag_wait;
 }
 
 
-/** Codel main_wait of task main.
+/** Codel detect_wait of task detect.
  *
  * Triggered by arucotag_wait.
  * Yields to arucotag_pause_wait, arucotag_detect.
  */
 genom_event
-main_wait(float length, const arucotag_intrinsics *intrinsics,
-          const arucotag_frame *frame, arucotag_calib **calib,
-          const genom_context self)
+detect_wait(float length, const arucotag_intrinsics *intrinsics,
+            const arucotag_frame *frame, arucotag_calib **calib,
+            const genom_context self)
 {
     if (intrinsics->read(self) == genom_ok && intrinsics->data(self) &&
         frame->read(self) == genom_ok && frame->data(self) &&
@@ -80,35 +81,47 @@ main_wait(float length, const arucotag_intrinsics *intrinsics,
 }
 
 
-/** Codel main_detect of task main.
+/** Codel detect_detect of task detect.
  *
  * Triggered by arucotag_detect.
- * Yields to arucotag_pause_detect.
+ * Yields to arucotag_log.
  */
 genom_event
-main_detect(const arucotag_frame *frame, float length,
-            const arucotag_calib *calib, arucotag_detector **tags,
-            const arucotag_pose *pose, const genom_context self)
+detect_detect(const arucotag_frame *frame, float length,
+              const arucotag_calib *calib, arucotag_detector **tags,
+              const genom_context self)
 {
     frame->read(self);
 
+    // Convert frame to cv::Mat
     const uint16_t h = frame->data(self)->height;
     const uint16_t w = frame->data(self)->width;
     (*tags)->frame = Mat(Size(w, h), CV_8UC3, (void*)frame->data(self)->pixels._buffer, Mat::AUTO_STEP);
 
-    aruco::detectMarkers((*tags)->frame, (*tags)->dict, (*tags)->corners, (*tags)->ids);
+    // Detect tags in frame
+    vector<vector<Point2f>> corners;
+    aruco::detectMarkers((*tags)->frame, (*tags)->dict, corners, (*tags)->ids);
 
+    // Estimate pose from corners
     if ((*tags)->ids.size() > 0) {
-        vector<Vec3d> rotations, translations;
-        aruco::estimatePoseSingleMarkers((*tags)->corners, length, calib->K, calib->D, rotations, translations);
-
-        pose->data(self)->pos._value.x = translations[0][0];
-        pose->data(self)->pos._value.y = translations[0][1];
-        pose->data(self)->pos._value.z = translations[0][2];
-        pose->data(self)->pos._present = true;
-
-        pose->write(self);
+        vector<Vec3d> rotations;
+        aruco::estimatePoseSingleMarkers(corners, length, calib->K, calib->D, rotations, (*tags)->translations);
+        (*tags)->new_detection = true;
     }
 
-    return arucotag_pause_detect;
+    return arucotag_log;
+}
+
+
+/** Codel detect_log of task detect.
+ *
+ * Triggered by arucotag_log.
+ * Yields to arucotag_pause_detect.
+ */
+genom_event
+detect_log(const arucotag_predictor *kalman, arucotag_log_s **log,
+           const genom_context self)
+{
+  /* skeleton sample: insert your code */
+  /* skeleton sample */ return arucotag_pause_detect;
 }

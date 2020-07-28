@@ -38,8 +38,29 @@ genom_event
 log_start(const char path[64], uint32_t decimation,
           arucotag_log_s **log, const genom_context self)
 {
-  /* skeleton sample: insert your code */
-  /* skeleton sample */ return genom_ok;
+    int fd;
+
+    fd = open(path, O_WRONLY|O_APPEND|O_CREAT|O_TRUNC, 0666);
+    if (fd < 0) return arucotag_e_sys_error(path, self);
+
+    if (write(fd, arucotag_log_header "\n", sizeof(arucotag_log_header)) < 0)
+        return arucotag_e_sys_error(path, self);
+
+    if ((*log)->req.aio_fildes >= 0)
+    {
+        close((*log)->req.aio_fildes);
+        if ((*log)->pending)
+            while (aio_error(&(*log)->req) == EINPROGRESS)
+              /* empty body */;
+    }
+    (*log)->req.aio_fildes = fd;
+    (*log)->pending = false;
+    (*log)->skipped = false;
+    (*log)->decimation = decimation < 1 ? 1 : decimation;
+    (*log)->missed = 0;
+    (*log)->total = 0;
+    warnx("logging started to %s", path);
+    return genom_ok;
 }
 
 
@@ -52,8 +73,11 @@ log_start(const char path[64], uint32_t decimation,
 genom_event
 log_stop(arucotag_log_s **log, const genom_context self)
 {
-  /* skeleton sample: insert your code */
-  /* skeleton sample */ return genom_ok;
+    if (*log && (*log)->req.aio_fildes >= 0)
+        close((*log)->req.aio_fildes);
+    (*log)->req.aio_fildes = -1;
+    warnx("logging terminated");
+    return genom_ok;
 }
 
 
@@ -67,6 +91,10 @@ genom_event
 log_info(const arucotag_log_s *log, uint32_t *miss, uint32_t *total,
          const genom_context self)
 {
-  /* skeleton sample: insert your code */
-  /* skeleton sample */ return genom_ok;
+    *miss = *total = 0;
+    if (log) {
+        *miss = log->missed;
+        *total = log->total;
+    }
+    return genom_ok;
 }

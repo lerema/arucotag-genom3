@@ -41,13 +41,13 @@ component arucotag {
     uses    or_camera;
 
     /* ---- Exceptions ---------------------------------------------------- */
-    exception e_input { string<128> what; };
     exception e_mem { string<128> what; };
     exception e_sys { short code; string<128> what; };
 
     /* ---- Types --------------------------------------------------------- */
     native calib;
     native detector;
+    native predictor;
 
     native log_s;
 
@@ -58,6 +58,7 @@ component arucotag {
 
     /* ---- Ports --------------------------------------------------------- */
     port out or_pose_estimator::state pose;
+    port in  or_pose_estimator::state drone;
     /* interfaces ports:
      *  port in   or::sensor::frame         frame;
      *  port in   or::sensor::intrinsics    intrinsics;
@@ -69,23 +70,46 @@ component arucotag {
         float length;
         calib calib;
         detector tags;
+        predictor kalman;
 
         portinfo_s ports;
         log_s log;
     };
 
     const unsigned short detect_period = 50;
+    const unsigned short predict_period = 2;
+
     /* ---- Main task ----------------------------------------------------- */
-    task main{
+    task detect {
         period detect_period ms;
-        codel<start> main_start(out ::ids)
+
+        codel<start> detect_start(out ::ids)
             yield wait;
 
-        codel<wait> main_wait(in length, in intrinsics, in frame, out calib)
+        codel<wait> detect_wait(in length, in intrinsics, in frame, out calib)
             yield pause::wait, detect;
 
-        codel<detect> main_detect(in frame, in length, in calib, out tags, out pose)
+        codel<detect> detect_detect(in frame, in length, in calib, out tags)
+            yield log;
+
+        codel<log> detect_log(in kalman, inout log)
             yield pause::detect;
+    };
+
+    task predict {
+        period predict_period ms;
+
+        codel<start> predict_start(out ::ids, out pose)
+            yield wait;
+
+        codel<wait> predict_wait(in tags, out kalman)
+            yield pause::wait, predict;
+
+        codel<predict> predict_main(inout tags, inout kalman, in drone, out pose)
+            yield log;
+
+        codel<log> predict_log(in kalman, inout log)
+            yield pause::predict;
     };
 
     /* ---- Getters/Setters ----------------------------------------------- */
