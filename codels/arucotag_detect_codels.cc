@@ -84,7 +84,7 @@ detect_wait(float length, const arucotag_intrinsics *intrinsics,
 /** Codel detect_detect of task detect.
  *
  * Triggered by arucotag_detect.
- * Yields to arucotag_log.
+ * Yields to arucotag_pause_detect.
  */
 genom_event
 detect_detect(const arucotag_frame *frame, float length,
@@ -104,24 +104,31 @@ detect_detect(const arucotag_frame *frame, float length,
 
     // Estimate pose from corners
     if ((*tags)->ids.size() > 0) {
-        vector<Vec3d> rotations;
-        aruco::estimatePoseSingleMarkers(corners, length, calib->K, calib->D, rotations, (*tags)->translations);
+        vector<Vec3d> translations, rotations;
+        aruco::estimatePoseSingleMarkers(corners, length, calib->K, calib->D, rotations, translations);
+        if (!(*tags)->measured_state.data)
+            (*tags)->measured_state = (Mat_<float>(6,1) <<
+                translations[0][0],
+                translations[0][1],
+                translations[0][2],
+                0,
+                0,
+                0
+            );
+        else
+            (*tags)->measured_state = (Mat_<float>(6,1) <<
+                translations[0][0],
+                translations[0][1],
+                translations[0][2],
+                (translations[0][0] - (*tags)->measured_state.at<float>(0))/(arucotag_detect_period/1000.),
+                (translations[0][1] - (*tags)->measured_state.at<float>(1))/(arucotag_detect_period/1000.),
+                (translations[0][2] - (*tags)->measured_state.at<float>(2))/(arucotag_detect_period/1000.)
+            );
         (*tags)->new_detection = true;
     }
 
-    return arucotag_log;
-}
+    imshow("", (*tags)->frame);
+    waitKey(1);
 
-
-/** Codel detect_log of task detect.
- *
- * Triggered by arucotag_log.
- * Yields to arucotag_pause_detect.
- */
-genom_event
-detect_log(const arucotag_predictor *kalman, arucotag_log_s **log,
-           const genom_context self)
-{
-  /* skeleton sample: insert your code */
-  /* skeleton sample */ return arucotag_pause_detect;
+    return arucotag_pause_detect;
 }

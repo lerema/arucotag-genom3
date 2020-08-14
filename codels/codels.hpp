@@ -48,8 +48,8 @@ struct arucotag_detector {
     Mat frame;
     bool new_detection;
     vector<int> ids;
-    vector<Vec3d> translations;
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250);
+    Mat measured_state;
 };
 
 struct arucotag_predictor {
@@ -70,9 +70,9 @@ struct arucotag_log_s {
     }
     # define arucotag_logfmt	"%g "
     # define arucotag_log_header                                            \
-        "ts meas x y z vx vy vz "
+        "ts x y z vx vy vz "
     # define arucotag_log_fmt                                               \
-        "%ld.%09ld %i "                                                     \
+        "%ld.%09ld "                                                        \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt
 };
