@@ -36,12 +36,34 @@
  * Yields to arucotag_wait.
  */
 genom_event
-detect_start(arucotag_ids *ids, const genom_context self)
+detect_start(arucotag_ids *ids, const arucotag_pose *pose,
+             const genom_context self)
 {
+    // Init IDS fields
     ids->length = 0;
     ids->tags = new arucotag_detector();
     ids->calib = new arucotag_calib();
     ids->log = new arucotag_log_s();
+
+    // Init outport
+    pose->data(self)->pos._present = true;
+    pose->data(self)->att._present = false;
+    pose->data(self)->vel._present = false;
+    pose->data(self)->avel._present = false;
+    pose->data(self)->acc._present = false;
+    pose->data(self)->aacc._present = false;
+
+    // Init extrinsic calibration (hardcoded)
+    ids->calib->B_R_C = (Mat_<float>(3,3) <<
+        1, 0, 0,
+        0,-1, 0,
+        0, 0,-1
+    );
+    ids->calib->B_t_C = (Mat_<float>(3,1) <<
+        0,
+        0,
+        -0.02
+    );
 
     return arucotag_wait;
 }
@@ -84,14 +106,18 @@ detect_wait(float length, const arucotag_intrinsics *intrinsics,
 /** Codel detect_detect of task detect.
  *
  * Triggered by arucotag_detect.
- * Yields to arucotag_pause_detect.
+ * Yields to arucotag_log, arucotag_pause_detect.
  */
 genom_event
 detect_detect(const arucotag_frame *frame, float length,
               const arucotag_calib *calib, arucotag_detector **tags,
+              const arucotag_drone *drone, const arucotag_pose *pose,
               const genom_context self)
 {
     frame->read(self);
+    drone->read(self);
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
 
     // Convert frame to cv::Mat
     const uint16_t h = frame->data(self)->height;
@@ -99,36 +125,127 @@ detect_detect(const arucotag_frame *frame, float length,
     (*tags)->frame = Mat(Size(w, h), CV_8UC3, (void*)frame->data(self)->pixels._buffer, Mat::AUTO_STEP);
 
     // Detect tags in frame
+    vector<int> ids;
     vector<vector<Point2f>> corners;
-    aruco::detectMarkers((*tags)->frame, (*tags)->dict, corners, (*tags)->ids);
+    aruco::detectMarkers((*tags)->frame, (*tags)->dict, corners, ids);
 
     // Estimate pose from corners
-    if ((*tags)->ids.size() > 0) {
+    if (ids.size() > 0)
+    {
         vector<Vec3d> translations, rotations;
         aruco::estimatePoseSingleMarkers(corners, length, calib->K, calib->D, rotations, translations);
-        if (!(*tags)->measured_state.data)
-            (*tags)->measured_state = (Mat_<float>(6,1) <<
-                translations[0][0],
-                translations[0][1],
-                translations[0][2],
-                0,
-                0,
-                0
-            );
-        else
-            (*tags)->measured_state = (Mat_<float>(6,1) <<
-                translations[0][0],
-                translations[0][1],
-                translations[0][2],
-                (translations[0][0] - (*tags)->measured_state.at<float>(0))/(arucotag_detect_period/1000.),
-                (translations[0][1] - (*tags)->measured_state.at<float>(1))/(arucotag_detect_period/1000.),
-                (translations[0][2] - (*tags)->measured_state.at<float>(2))/(arucotag_detect_period/1000.)
-            );
-        (*tags)->new_detection = true;
+        (*tags)->raw_meas = (Mat_<float>(3,1) <<
+            translations[0][0],
+            translations[0][1],
+            translations[0][2]
+        );
+
+        // Convert to world frame
+        double qw = drone->data(self)->att._value.qw;
+        double qx = drone->data(self)->att._value.qx;
+        double qy = drone->data(self)->att._value.qy;
+        double qz = drone->data(self)->att._value.qz;
+        Mat W_R_B = (Mat_<float>(3,3) <<
+            1 - 2*qy*qy - 2*qz*qz,     2*qx*qy - 2*qz*qw,     2*qx*qz + 2*qy*qw,
+                2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz,     2*qy*qz - 2*qx*qw,
+                2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy
+        );
+        Mat W_t_B = (Mat_<float>(3,1) <<
+            drone->data(self)->pos._value.x,
+            drone->data(self)->pos._value.y,
+            drone->data(self)->pos._value.z
+        );
+        (*tags)->transformed_meas = W_R_B * (calib->B_R_C * (*tags)->raw_meas + calib->B_t_C ) + W_t_B;
+
+        cout << "C_r " << (*tags)->raw_meas << endl;
+        cout << "W_R_B " << W_R_B << endl;
+        cout << "B_R_C " << calib->B_R_C << endl;
+        cout << "B_t_C " << calib->B_t_C << endl;
+        cout << "W_t_B " << W_t_B << endl;
+        cout << "W_r " << (*tags)->transformed_meas << endl;
+        cout << "-----" << endl;
+        // Publish
+        pose->data(self)->pos._value.x = (*tags)->transformed_meas.at<float>(0);
+        pose->data(self)->pos._value.y = (*tags)->transformed_meas.at<float>(1);
+        pose->data(self)->pos._value.z = (*tags)->transformed_meas.at<float>(2);
+
+        pose->data(self)->ts.sec = tv.tv_sec;
+        pose->data(self)->ts.nsec = tv.tv_usec / 1000;
+        pose->write(self);
+
+        imshow("", (*tags)->frame);
+        waitKey(1);
+
+        return arucotag_log;
     }
 
     imshow("", (*tags)->frame);
     waitKey(1);
 
+    return arucotag_pause_detect;
+}
+
+
+/** Codel detect_log of task detect.
+ *
+ * Triggered by arucotag_log.
+ * Yields to arucotag_pause_detect.
+ */
+genom_event
+detect_log(const arucotag_detector *tags, arucotag_log_s **log,
+           const genom_context self)
+{
+    if (*log)
+    {
+        if ((*log)->req.aio_fildes >= 0)
+        {
+            (*log)->total++;
+            if ((*log)->total % (*log)->decimation == 0)
+                if ((*log)->pending)
+                {
+                    if (aio_error(&(*log)->req) != EINPROGRESS)
+                    {
+                        (*log)->pending = false;
+                        if (aio_return(&(*log)->req) <= 0)
+                        {
+                            warn("log");
+                            close((*log)->req.aio_fildes);
+                            (*log)->req.aio_fildes = -1;
+                        }
+                    }
+                    else
+                    {
+                        (*log)->skipped = true;
+                        (*log)->missed++;
+                    }
+                }
+        }
+        if ((*log)->req.aio_fildes >= 0 && !(*log)->pending)
+        {
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            (*log)->req.aio_nbytes = snprintf(
+                  (*log)->buffer, sizeof((*log)->buffer),
+                  "%s" arucotag_log_fmt "\n",
+                  (*log)->skipped ? "\n" : "",
+                  tv.tv_sec, tv.tv_usec,
+                 tags->raw_meas.at<float>(0),
+                 tags->raw_meas.at<float>(1),
+                 tags->raw_meas.at<float>(2),
+                 tags->transformed_meas.at<float>(0),
+                 tags->transformed_meas.at<float>(1),
+                 tags->transformed_meas.at<float>(2)
+              );
+              if (aio_write(&(*log)->req))
+              {
+                  warn("log");
+                  close((*log)->req.aio_fildes);
+                  (*log)->req.aio_fildes = -1;
+              }
+              else
+                  (*log)->pending = true;
+              (*log)->skipped = false;
+        }
+    }
     return arucotag_pause_detect;
 }

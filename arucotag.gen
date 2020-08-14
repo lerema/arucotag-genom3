@@ -47,7 +47,6 @@ component arucotag {
     /* ---- Types --------------------------------------------------------- */
     native calib;
     native detector;
-    native predictor;
 
     native log_s;
 
@@ -70,7 +69,6 @@ component arucotag {
         float length;
         calib calib;
         detector tags;
-        predictor kalman;
 
         log_s log;
     };
@@ -82,30 +80,17 @@ component arucotag {
     task detect {
         period detect_period ms;
 
-        codel<start> detect_start(out ::ids)
+        codel<start> detect_start(out ::ids, out pose)
             yield wait;
 
         codel<wait> detect_wait(in length, in intrinsics, in frame, out calib)
             yield pause::wait, detect;
 
-        codel<detect> detect_detect(in frame, in length, in calib, out tags)
+        codel<detect> detect_detect(in frame, in length, in calib, out tags, in drone, out pose)
+            yield log, pause::detect;
+
+        codel<log> detect_log(in tags, inout log)
             yield pause::detect;
-    };
-
-    task predict {
-        period predict_period ms;
-
-        codel<start> predict_start(out ::ids, out pose)
-            yield wait;
-
-        codel<wait> predict_wait(inout tags, out kalman)
-            yield pause::wait, log;
-
-        codel<predict> predict_main(inout tags, inout kalman, in drone, out pose)
-            yield log;
-
-        codel<log> predict_log(in kalman, inout log)
-            yield pause::predict;
     };
 
     /* ---- Getters/Setters ----------------------------------------------- */

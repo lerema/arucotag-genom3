@@ -42,20 +42,15 @@ using namespace cv;
 struct  arucotag_calib {
     Mat K = Mat::zeros(Size(3,3), CV_32F);
     Mat D = Mat::zeros(Size(1,5), CV_32F);
+    Mat B_R_C;
+    Mat B_t_C;
 };
 
 struct arucotag_detector {
     Mat frame;
     bool new_detection;
-    vector<int> ids;
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250);
-    Mat measured_state;
-};
-
-struct arucotag_predictor {
-    KalmanFilter kf;
-    Mat C_T_B;
-    Mat state;
+    Mat raw_meas, transformed_meas;
 };
 
 struct arucotag_log_s {
@@ -70,7 +65,7 @@ struct arucotag_log_s {
     }
     # define arucotag_logfmt	"%g "
     # define arucotag_log_header                                            \
-        "ts x y z vx vy vz "
+        "ts C_x C_y C_z W_x W_y W_z "
     # define arucotag_log_fmt                                               \
         "%ld.%09ld "                                                        \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
