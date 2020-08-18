@@ -53,6 +53,16 @@ detect_start(arucotag_ids *ids, const arucotag_pose *pose,
     pose->data(self)->acc._present = false;
     pose->data(self)->aacc._present = false;
 
+    double sigma_x = 0.05;
+    double sigma_y = 0.05;
+    double sigma_z = 0.05;
+    pose->data(self)->pos_cov._value.cov[0] = sigma_x*sigma_x;
+    pose->data(self)->pos_cov._value.cov[1] = sigma_x*sigma_y;
+    pose->data(self)->pos_cov._value.cov[2] = sigma_x*sigma_z;
+    pose->data(self)->pos_cov._value.cov[3] = sigma_y*sigma_y;
+    pose->data(self)->pos_cov._value.cov[4] = sigma_y*sigma_z;
+    pose->data(self)->pos_cov._value.cov[5] = sigma_z*sigma_z;
+
     // Init extrinsic calibration (hardcoded)
     ids->calib->B_R_C = (Mat_<float>(3,3) <<
         1, 0, 0,
@@ -157,12 +167,10 @@ detect_detect(const arucotag_frame *frame, float length,
         );
         (*tags)->transformed_meas = W_R_B * (calib->B_R_C * (*tags)->raw_meas + calib->B_t_C ) + W_t_B;
 
+        cout << "K " << calib->K << endl;
         cout << "C_r " << (*tags)->raw_meas << endl;
-        cout << "W_R_B " << W_R_B << endl;
-        cout << "B_R_C " << calib->B_R_C << endl;
-        cout << "B_t_C " << calib->B_t_C << endl;
-        cout << "W_t_B " << W_t_B << endl;
         cout << "W_r " << (*tags)->transformed_meas << endl;
+        cout << "ts " << tv.tv_sec << "." << tv.tv_usec * 1000 << endl;
         cout << "-----" << endl;
         // Publish
         pose->data(self)->pos._value.x = (*tags)->transformed_meas.at<float>(0);
@@ -170,7 +178,7 @@ detect_detect(const arucotag_frame *frame, float length,
         pose->data(self)->pos._value.z = (*tags)->transformed_meas.at<float>(2);
 
         pose->data(self)->ts.sec = tv.tv_sec;
-        pose->data(self)->ts.nsec = tv.tv_usec / 1000;
+        pose->data(self)->ts.nsec = tv.tv_usec * 1000;
         pose->write(self);
 
         imshow("", (*tags)->frame);
@@ -225,26 +233,26 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
             struct timeval tv;
             gettimeofday(&tv, NULL);
             (*log)->req.aio_nbytes = snprintf(
-                  (*log)->buffer, sizeof((*log)->buffer),
-                  "%s" arucotag_log_fmt "\n",
-                  (*log)->skipped ? "\n" : "",
-                  tv.tv_sec, tv.tv_usec,
-                 tags->raw_meas.at<float>(0),
-                 tags->raw_meas.at<float>(1),
-                 tags->raw_meas.at<float>(2),
-                 tags->transformed_meas.at<float>(0),
-                 tags->transformed_meas.at<float>(1),
-                 tags->transformed_meas.at<float>(2)
-              );
-              if (aio_write(&(*log)->req))
-              {
-                  warn("log");
-                  close((*log)->req.aio_fildes);
-                  (*log)->req.aio_fildes = -1;
-              }
-              else
-                  (*log)->pending = true;
-              (*log)->skipped = false;
+                (*log)->buffer, sizeof((*log)->buffer),
+                "%s" arucotag_log_fmt "\n",
+                (*log)->skipped ? "\n" : "",
+                tv.tv_sec, tv.tv_usec*1000,
+                tags->raw_meas.at<float>(0),
+                tags->raw_meas.at<float>(1),
+                tags->raw_meas.at<float>(2),
+                tags->transformed_meas.at<float>(0),
+                tags->transformed_meas.at<float>(1),
+                tags->transformed_meas.at<float>(2)
+            );
+            if (aio_write(&(*log)->req))
+            {
+                warn("log");
+                close((*log)->req.aio_fildes);
+                (*log)->req.aio_fildes = -1;
+            }
+            else
+                (*log)->pending = true;
+            (*log)->skipped = false;
         }
     }
     return arucotag_pause_detect;
