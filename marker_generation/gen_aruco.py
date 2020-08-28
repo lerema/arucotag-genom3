@@ -37,9 +37,7 @@ parser.add_argument("index", help="Id of marker to draw.", type=int)
 parser.add_argument(
     "-l", dest="length", help="Size of gazebo model (meter).", default=1.0, type=float
 )
-parser.add_argument(
-    "-g", dest="gazebo", help="Generate gazebo model.", action="store_true"
-)
+parser.add_argument("-g", dest="gazebo", help="Generate gazebo model.", action="store_true")
 parser.add_argument(
     "-d",
     dest="aruco_dict",
