@@ -48,7 +48,7 @@ detect_start(arucotag_ids *ids, const arucotag_pose *pose,
     // Init outport
     pose->data(self)->pos._present = true;
     pose->data(self)->att._present = false;
-    pose->data(self)->vel._present = false;
+    pose->data(self)->vel._present = true;
     pose->data(self)->avel._present = false;
     pose->data(self)->acc._present = false;
     pose->data(self)->aacc._present = false;
@@ -61,7 +61,8 @@ detect_start(arucotag_ids *ids, const arucotag_pose *pose,
     pose->data(self)->pos_cov._value.cov[2] = sigma_x*sigma_z;
     pose->data(self)->pos_cov._value.cov[3] = sigma_y*sigma_y;
     pose->data(self)->pos_cov._value.cov[4] = sigma_y*sigma_z;
-    pose->data(self)->pos_cov._value.cov[5] = sigma_z*sigma_z;
+    // pose->data(self)->pos_cov._value.cov[5] = sigma_z*sigma_z;
+    pose->data(self)->pos_cov._value.cov[5] = 0;
 
     // Init extrinsic calibration (hardcoded)
     ids->calib->B_R_C = (Mat_<float>(3,3) <<
@@ -167,28 +168,22 @@ detect_detect(const arucotag_frame *frame, float length,
         );
         (*tags)->transformed_meas = W_R_B * (calib->B_R_C * (*tags)->raw_meas + calib->B_t_C ) + W_t_B;
 
-        cout << "K " << calib->K << endl;
-        cout << "C_r " << (*tags)->raw_meas << endl;
-        cout << "W_r " << (*tags)->transformed_meas << endl;
-        cout << "ts " << tv.tv_sec << "." << tv.tv_usec * 1000 << endl;
-        cout << "-----" << endl;
         // Publish
+        cout << (*tags)->transformed_meas << endl;
         pose->data(self)->pos._value.x = (*tags)->transformed_meas.at<float>(0);
         pose->data(self)->pos._value.y = (*tags)->transformed_meas.at<float>(1);
-        pose->data(self)->pos._value.z = (*tags)->transformed_meas.at<float>(2);
+        pose->data(self)->pos._value.z = 0;
+
+        pose->data(self)->vel._value.vx = 0;
+        pose->data(self)->vel._value.vy = 0;
+        pose->data(self)->vel._value.vz = 0;
 
         pose->data(self)->ts.sec = tv.tv_sec;
         pose->data(self)->ts.nsec = tv.tv_usec * 1000;
         pose->write(self);
 
-        imshow("", (*tags)->frame);
-        waitKey(1);
-
         return arucotag_log;
     }
-
-    imshow("", (*tags)->frame);
-    waitKey(1);
 
     return arucotag_pause_detect;
 }
