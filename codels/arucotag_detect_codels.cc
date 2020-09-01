@@ -169,7 +169,6 @@ detect_detect(const arucotag_frame *frame, float length,
         (*tags)->transformed_meas = W_R_B * (calib->B_R_C * (*tags)->raw_meas + calib->B_t_C ) + W_t_B;
 
         // Publish
-        cout << (*tags)->transformed_meas << endl;
         pose->data(self)->pos._value.x = (*tags)->transformed_meas.at<float>(0);
         pose->data(self)->pos._value.y = (*tags)->transformed_meas.at<float>(1);
         pose->data(self)->pos._value.z = 0;
