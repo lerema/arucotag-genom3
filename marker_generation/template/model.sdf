@@ -1,9 +1,17 @@
 <?xml version='1.0'?>
 <sdf version='1.6'>
     <model name='TEMPLATE_MARKER'>
-        <link name='main'>
-            <pose frame=''>0 0 0 0 0 0</pose>
-            <visual name='main_visual'>
+        <link name='tag'>
+            <gravity>0</gravity>
+            <inertial>
+              <mass>0.001</mass>
+              <inertia>
+                <ixx>1e-6</ixx><ixy>0</ixy><ixz>0</ixz>
+                <iyy>1e-6</iyy><iyz>0</iyz>
+                <izz>1e-6</izz>
+              </inertia>
+            </inertial>
+            <visual name='main'>
                 <geometry>
                     <box>
                         <size>TEMPLATE_LENGTH TEMPLATE_LENGTH 0.001</size>
@@ -18,6 +26,5 @@
                 </material>
             </visual>
         </link>
-        <static>1</static>
     </model>
 </sdf>
