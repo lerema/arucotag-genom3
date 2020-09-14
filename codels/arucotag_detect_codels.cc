@@ -168,10 +168,11 @@ detect_detect(const arucotag_frame *frame, float length,
                 translations[i][2]
             ));
 
-            (*tags)->transformed_meas.push_back(W_R_B * (calib->B_R_C * (*tags)->raw_meas.back() + calib->B_t_C ) + W_t_B);
+            (*tags)->transformed_meas.push_back(W_R_B * ( calib->B_R_C * (*tags)->raw_meas.back() + calib->B_t_C ) + W_t_B);
 
             pose->data(ports->_buffer[j], self)->pos._value.x = (*tags)->transformed_meas.back().at<float>(0);
             pose->data(ports->_buffer[j], self)->pos._value.y = (*tags)->transformed_meas.back().at<float>(1);
+            pose->data(ports->_buffer[j], self)->pos._value.z = (*tags)->transformed_meas.back().at<float>(2);
             pose->data(ports->_buffer[j], self)->ts.sec = frame->data(self)->ts.sec;
             pose->data(ports->_buffer[j], self)->ts.nsec = frame->data(self)->ts.nsec;
             pose->write(ports->_buffer[j], self);
@@ -297,10 +298,9 @@ add_marker(const char marker[128], sequence_arucotag_portinfo *ports,
     pose->data(marker, self)->pos_cov._value.cov[2] = sigma_x*sigma_z;
     pose->data(marker, self)->pos_cov._value.cov[3] = sigma_y*sigma_y;
     pose->data(marker, self)->pos_cov._value.cov[4] = sigma_y*sigma_z;
-    // pose->data(marker, self)->pos_cov._value.cov[5] = sigma_z*sigma_z;
-    pose->data(marker, self)->pos_cov._value.cov[5] = 0;
+    pose->data(marker, self)->pos_cov._value.cov[5] = sigma_z*sigma_z;
+    // pose->data(marker, self)->pos_cov._value.cov[5] = 0;
 
-    pose->data(marker, self)->pos._value.z = 0;
     pose->data(marker, self)->vel._value.vx = 0;
     pose->data(marker, self)->vel._value.vy = 0;
     pose->data(marker, self)->vel._value.vz = 0;
