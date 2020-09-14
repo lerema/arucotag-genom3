@@ -50,13 +50,10 @@ component arucotag {
 
     native log_s;
 
-    struct portinfo_s {
-      string<128> name;
-      or::time::ts last;
-    };
+    typedef string<128> portinfo;
 
     /* ---- Ports --------------------------------------------------------- */
-    port out or_pose_estimator::state pose;
+    port multiple out or_pose_estimator::state pose;
     port in  or_pose_estimator::state drone;
     /* interfaces ports:
      *  port in   or::sensor::frame         frame;
@@ -70,6 +67,8 @@ component arucotag {
         calib calib;
         detector tags;
 
+        sequence<portinfo> ports;
+
         log_s log;
     };
 
@@ -80,17 +79,23 @@ component arucotag {
     task detect {
         period detect_period ms;
 
-        codel<start> detect_start(out ::ids, out pose)
+        codel<start> detect_start(out ::ids)
             yield wait;
 
         codel<wait> detect_wait(in length, in intrinsics, in frame, out calib)
             yield pause::wait, detect;
 
-        codel<detect> detect_detect(in frame, in length, in calib, out tags, in drone, out pose)
+        codel<detect> detect_detect(in frame, in length, in calib, out tags, in drone, in ports, out pose)
             yield log, pause::detect;
 
         codel<log> detect_log(in tags, inout log)
             yield pause::detect;
+    };
+
+    activity add_marker(in string<128> marker = : "Marker name") {
+        task detect;
+        codel<start> add_marker(in marker, out ports, out pose)
+            yield ether;
     };
 
     /* ---- Getters/Setters ----------------------------------------------- */

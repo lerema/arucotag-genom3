@@ -104,7 +104,7 @@ a|.Data structure
 '''
 
 [[pose]]
-=== pose (out)
+=== pose (multiple out)
 
 
 [role="small", width="50%", float="right", cols="1"]
@@ -112,6 +112,63 @@ a|.Data structure
 a|.Data structure
 [disc]
  * `struct ::or_pose_estimator::state` `pose`
+ ** `struct ::or::time::ts` `ts`
+ *** `long` `sec`
+ *** `long` `nsec`
+ ** `boolean` `intrinsic`
+ ** `optional< struct ::or::t3d::pos >` `pos`
+ *** `double` `x`
+ *** `double` `y`
+ *** `double` `z`
+ ** `optional< struct ::or::t3d::att >` `att`
+ *** `double` `qw`
+ *** `double` `qx`
+ *** `double` `qy`
+ *** `double` `qz`
+ ** `optional< struct ::or::t3d::vel >` `vel`
+ *** `double` `vx`
+ *** `double` `vy`
+ *** `double` `vz`
+ ** `optional< struct ::or::t3d::avel >` `avel`
+ *** `double` `wx`
+ *** `double` `wy`
+ *** `double` `wz`
+ ** `optional< struct ::or::t3d::acc >` `acc`
+ *** `double` `ax`
+ *** `double` `ay`
+ *** `double` `az`
+ ** `optional< struct ::or::t3d::aacc >` `aacc`
+ *** `double` `awx`
+ *** `double` `awy`
+ *** `double` `awz`
+ ** `optional< struct ::or::t3d::pos_cov >` `pos_cov`
+ *** `double` `cov[6]`
+ ** `optional< struct ::or::t3d::att_cov >` `att_cov`
+ *** `double` `cov[10]`
+ ** `optional< struct ::or::t3d::att_pos_cov >` `att_pos_cov`
+ *** `double` `cov[12]`
+ ** `optional< struct ::or::t3d::vel_cov >` `vel_cov`
+ *** `double` `cov[6]`
+ ** `optional< struct ::or::t3d::avel_cov >` `avel_cov`
+ *** `double` `cov[6]`
+ ** `optional< struct ::or::t3d::acc_cov >` `acc_cov`
+ *** `double` `cov[6]`
+ ** `optional< struct ::or::t3d::aacc_cov >` `aacc_cov`
+ *** `double` `cov[6]`
+
+|===
+
+'''
+
+[[pose2]]
+=== pose2 (out)
+
+
+[role="small", width="50%", float="right", cols="1"]
+|===
+a|.Data structure
+[disc]
+ * `struct ::or_pose_estimator::state` `pose2`
  ** `struct ::or::time::ts` `ts`
  *** `long` `sec`
  *** `long` `nsec`
@@ -219,6 +276,24 @@ a|.Data structure
 
 == Services
 
+[[add_marker]]
+=== add_marker (activity)
+
+[role="small", width="50%", float="right", cols="1"]
+|===
+a|.Inputs
+[disc]
+ * `string<128>` `marker` Marker name
+
+a|.Context
+[disc]
+  * In task `<<detect>>`
+  (frequency 20.0 _Hz_)
+  * Updates port `<<pose>>`
+|===
+
+'''
+
 [[set_length]]
 === set_length (attribute)
 
@@ -287,19 +362,7 @@ a|.Context
 * Reads port `<<frame>>`
 * Reads port `<<intrinsics>>`
 * Updates port `<<pose>>`
-|===
-
-'''
-
-[[predict]]
-=== predict
-
-[role="small", width="50%", float="right", cols="1"]
-|===
-a|.Context
-[disc]
-  * Frequency 500.0 _Hz_
-* Updates port `<<pose>>`
+* Updates port `<<pose2>>`
 * Reads port `<<drone>>`
 |===
 

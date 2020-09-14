@@ -48,9 +48,9 @@ struct  arucotag_calib {
 
 struct arucotag_detector {
     Mat frame;
-    bool new_detection;
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250);
-    Mat raw_meas, transformed_meas;
+    vector<int> valid_ids;
+    vector<Mat> raw_meas, transformed_meas;
 };
 
 struct arucotag_log_s {
@@ -65,9 +65,9 @@ struct arucotag_log_s {
     }
     # define arucotag_logfmt	"%g "
     # define arucotag_log_header                                            \
-        "ts C_x C_y C_z W_x W_y W_z "
+        "ts i C_x C_y C_z W_x W_y W_z "
     # define arucotag_log_fmt                                               \
-        "%ld.%09ld "                                                        \
+        "%ld.%09ld %i "                                                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt
 };
