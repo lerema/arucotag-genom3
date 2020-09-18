@@ -21,6 +21,9 @@
  *
  *                                                  Martin Jacquet - June 2020
  */
+#ifndef H_ARUCOTAG_CODELS
+#define H_ARUCOTAG_CODELS
+
 #include "acarucotag.h"
 
 #include "arucotag_c_types.h"
@@ -88,3 +91,5 @@ arucotag_e_sys_error(const char *s, genom_context self)
     if (strerror_r(d.code, d.what + l, sizeof(d.what) - l)) { /* ignore error*/; }
     return arucotag_e_sys(&d, self);
 }
+
+#endif /* H_ARUCOTAG_CODELS */
