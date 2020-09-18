@@ -46,18 +46,6 @@ detect_start(arucotag_ids *ids, const genom_context self)
     ids->calib = new arucotag_calib();
     ids->log = new arucotag_log_s();
 
-    // Init extrinsic calibration (hardcoded)
-    ids->calib->B_R_C = (Mat_<float>(3,3) <<
-        1, 0, 0,
-        0,-1, 0,
-        0, 0,-1
-    );
-    ids->calib->B_t_C = (Mat_<float>(3,1) <<
-        0,
-        0,
-        -0.02
-    );
-
     return arucotag_wait;
 }
 
@@ -69,25 +57,27 @@ detect_start(arucotag_ids *ids, const genom_context self)
  */
 genom_event
 detect_wait(float length, const arucotag_intrinsics *intrinsics,
+            const arucotag_extrinsics *extrinsics,
             const arucotag_frame *frame, arucotag_calib **calib,
             const genom_context self)
 {
     if (intrinsics->read(self) == genom_ok && intrinsics->data(self) &&
+        extrinsics->read(self) == genom_ok && extrinsics->data(self) &&
         frame->read(self) == genom_ok && frame->data(self) &&
         frame->data(self)->pixels._length > 0 &&
         length > 0)
     {
-        (*calib)->K.at<float>(0,0) = intrinsics->data(self)->calib._buffer[0];
-        (*calib)->K.at<float>(1,1) = intrinsics->data(self)->calib._buffer[1];
-        (*calib)->K.at<float>(0,1) = intrinsics->data(self)->calib._buffer[2];
-        (*calib)->K.at<float>(0,2) = intrinsics->data(self)->calib._buffer[3];
-        (*calib)->K.at<float>(1,2) = intrinsics->data(self)->calib._buffer[4];
+        (*calib)->K.at<float>(0,0) = intrinsics->data(self)->calib.fx;
+        (*calib)->K.at<float>(1,1) = intrinsics->data(self)->calib.fy;
+        (*calib)->K.at<float>(0,1) = intrinsics->data(self)->calib.cx;
+        (*calib)->K.at<float>(0,2) = intrinsics->data(self)->calib.cy;
+        (*calib)->K.at<float>(1,2) = intrinsics->data(self)->calib.gamma;
         (*calib)->K.at<float>(2,2) = 1;
-        (*calib)->D.at<float>(0,0) = intrinsics->data(self)->disto._buffer[0];
-        (*calib)->D.at<float>(1,1) = intrinsics->data(self)->disto._buffer[1];
-        (*calib)->D.at<float>(0,2) = intrinsics->data(self)->disto._buffer[2];
-        (*calib)->D.at<float>(1,2) = intrinsics->data(self)->disto._buffer[3];
-        (*calib)->D.at<float>(0,1) = intrinsics->data(self)->disto._buffer[4];
+        (*calib)->D.at<float>(0,0) = intrinsics->data(self)->disto.k1;
+        (*calib)->D.at<float>(1,1) = intrinsics->data(self)->disto.k2;
+        (*calib)->D.at<float>(0,2) = intrinsics->data(self)->disto.k3;
+        (*calib)->D.at<float>(1,2) = intrinsics->data(self)->disto.p1;
+        (*calib)->D.at<float>(0,1) = intrinsics->data(self)->disto.p2;
 
         return arucotag_detect;
     }
@@ -111,13 +101,17 @@ detect_detect(const arucotag_frame *frame, float length,
     // Sleep if no marker is tracked
     if (!ports->_length) return arucotag_pause_detect;
 
-    frame->read(self);
     drone->read(self);
+    frame->read(self);
+    or_sensor_frame* fdata = frame->data(self);
 
     // Convert frame to cv::Mat
-    const uint16_t h = frame->data(self)->height;
-    const uint16_t w = frame->data(self)->width;
-    (*tags)->frame = Mat(Size(w, h), CV_8UC3, (void*)frame->data(self)->pixels._buffer, Mat::AUTO_STEP);
+    (*tags)->frame = Mat(
+        Size(fdata->width, fdata->height),
+        CV_8UC3,
+        (void*)fdata->pixels._buffer,
+        Mat::AUTO_STEP
+    );
 
     // Detect tags in frame
     vector<int> ids;

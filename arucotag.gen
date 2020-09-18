@@ -23,11 +23,10 @@
  */
 /* ---- Includes ---------------------------------------------------------- */
 #pragma require "openrobots2-idl >= 2.0"
+#pragma require "vision-idl"
 
 #include "or/pose/pose_estimator.gen"
-#include "or/time/time.idl"
-// #include "or/sensor/camera.gen"
-#include "camera.gen"
+#include "or/sensor/camera.gen"
 
 /* ---- Component declaration --------------------------------------------- */
 component arucotag {
@@ -73,7 +72,6 @@ component arucotag {
     };
 
     const unsigned short detect_period = 50;
-    const unsigned short predict_period = 2;
 
     /* ---- Main task ----------------------------------------------------- */
     task detect {
@@ -82,7 +80,7 @@ component arucotag {
         codel<start> detect_start(out ::ids)
             yield wait;
 
-        codel<wait> detect_wait(in length, in intrinsics, in frame, out calib)
+        codel<wait> detect_wait(in length, in intrinsics, in extrinsics, in frame, out calib)
             yield pause::wait, detect;
 
         codel<detect> detect_detect(in frame, in length, in calib, out tags, in drone, in ports, out pose)

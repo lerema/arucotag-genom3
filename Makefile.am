@@ -25,7 +25,7 @@ ACLOCAL_AMFLAGS=	-I autoconf
 
 # IDL source files
 idldir=		$(datadir)/idl/arucotag
-nobase_dist_idl_DATA= arucotag.gen camera.gen image.idl
+nobase_dist_idl_DATA= arucotag.gen
 
 pkgconfigdir=	$(libdir)/pkgconfig
 pkgconfig_DATA=

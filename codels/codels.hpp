@@ -42,8 +42,8 @@ using namespace cv;
 struct  arucotag_calib {
     Mat K = Mat::zeros(Size(3,3), CV_32F);
     Mat D = Mat::zeros(Size(1,5), CV_32F);
-    Mat B_R_C;
-    Mat B_t_C;
+    Mat B_R_C = Mat::eye(Size(3,3), CV_32F);
+    Mat B_t_C = Mat::zeros(Size(1,3), CV_32F);
 };
 
 struct arucotag_detector {

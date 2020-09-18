@@ -51,6 +51,7 @@ AC_SUBST([MAKE], [$ac_cv_path_MAKE])
 dnl External packages
 PKG_CHECK_MODULES(requires, [
   openrobots2-idl >= 2.0
+  vision-idl
   genom3 >= 2.99.26
 ])
 PKG_CHECK_MODULES(codels_requires, [
