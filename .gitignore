@@ -1,7 +1,7 @@
 build/
 Makefile.in
 aclocal.m4
-autoconf/*
+autoconf/
 !/autoconf/*.m4
 /autoconf/libtool.m4
 /autoconf/lt*.m4
