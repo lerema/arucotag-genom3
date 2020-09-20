@@ -81,7 +81,7 @@ a|.Data structure
  *** `float` `fy`
  *** `float` `cx`
  *** `float` `cy`
- *** `float` `gammma`
+ *** `float` `gamma`
  ** `struct ::or::sensor::distortion` `disto`
  *** `float` `k1`
  *** `float` `k2`

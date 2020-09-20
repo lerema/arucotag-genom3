@@ -28,6 +28,7 @@
 #include "codels.hpp"
 
 #include <string.h>
+#include <cmath>
 
 /* --- Task detect ------------------------------------------------------ */
 
@@ -67,6 +68,20 @@ detect_wait(float length, const arucotag_intrinsics *intrinsics,
         frame->data(self)->pixels._length > 0 &&
         length > 0)
     {
+        // Init static extr and intr and yield to detect codel
+        float r = extrinsics->data(self)->rot.roll;
+        float p = extrinsics->data(self)->rot.pitch;
+        float y = extrinsics->data(self)->rot.yaw;
+        (*calib)->B_R_C = (Mat_<float>(3,3) <<
+            cos(p)*cos(y), sin(r)*sin(p)*cos(y) - cos(r)*sin(y), sin(r)*sin(p)*cos(y) + sin(r)*sin(y),
+            cos(p)*sin(y), sin(r)*sin(p)*sin(y) + cos(r)*cos(y), cos(r)*sin(p)*sin(y) - sin(r)*cos(y),
+                  -sin(p),                        sin(r)*cos(p),                        cos(r)*cos(p)
+        );
+        (*calib)->B_t_C = (Mat_<float>(3,1) <<
+            extrinsics->data(self)->trans.tx,
+            extrinsics->data(self)->trans.ty,
+            extrinsics->data(self)->trans.tz
+        );
         (*calib)->K.at<float>(0,0) = intrinsics->data(self)->calib.fx;
         (*calib)->K.at<float>(1,1) = intrinsics->data(self)->calib.fy;
         (*calib)->K.at<float>(0,2) = intrinsics->data(self)->calib.cx;
@@ -101,14 +116,18 @@ detect_detect(const arucotag_frame *frame, float length,
     // Sleep if no marker is tracked
     if (!ports->_length) return arucotag_pause_detect;
 
-    drone->read(self);
+    // Check if any drone state is published
+    bool nostate = true;
+    if (drone->read(self) == genom_ok && drone->data(self))
+        nostate = false;
+
     frame->read(self);
     or_sensor_frame* fdata = frame->data(self);
 
     // Convert frame to cv::Mat
     (*tags)->frame = Mat(
         Size(fdata->width, fdata->height),
-        CV_8UC3,
+        (fdata->bpp == 1) ? CV_8UC1 : CV_8UC3,
         (void*)fdata->pixels._buffer,
         Mat::AUTO_STEP
     );
@@ -129,20 +148,29 @@ detect_detect(const arucotag_frame *frame, float length,
         aruco::estimatePoseSingleMarkers(corners, length, calib->K, calib->D, rotations, translations);
 
         // Convert to world frame
-        double qw = drone->data(self)->att._value.qw;
-        double qx = drone->data(self)->att._value.qx;
-        double qy = drone->data(self)->att._value.qy;
-        double qz = drone->data(self)->att._value.qz;
-        Mat W_R_B = (Mat_<float>(3,3) <<
-            1 - 2*qy*qy - 2*qz*qz,     2*qx*qy - 2*qz*qw,     2*qx*qz + 2*qy*qw,
-                2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz,     2*qy*qz - 2*qx*qw,
-                2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy
-        );
-        Mat W_t_B = (Mat_<float>(3,1) <<
-            drone->data(self)->pos._value.x,
-            drone->data(self)->pos._value.y,
-            drone->data(self)->pos._value.z
-        );
+        Mat W_R_B, W_t_B;
+        if (nostate)
+        {
+            W_R_B = Mat::eye(Size(3,3), CV_32F);
+            W_t_B = Mat::zeros(Size(1,3), CV_32F);
+        }
+        else
+        {
+            double qw = drone->data(self)->att._value.qw;
+            double qx = drone->data(self)->att._value.qx;
+            double qy = drone->data(self)->att._value.qy;
+            double qz = drone->data(self)->att._value.qz;
+            W_R_B = (Mat_<float>(3,3) <<
+                1 - 2*qy*qy - 2*qz*qz,     2*qx*qy - 2*qz*qw,     2*qx*qz + 2*qy*qw,
+                    2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz,     2*qy*qz - 2*qx*qw,
+                    2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy
+            );
+            W_t_B = (Mat_<float>(3,1) <<
+                drone->data(self)->pos._value.x,
+                drone->data(self)->pos._value.y,
+                drone->data(self)->pos._value.z
+            );
+        }
 
         // Publish
         for (uint16_t i=0; i<ids.size(); i++)
@@ -164,11 +192,13 @@ detect_detect(const arucotag_frame *frame, float length,
 
             (*tags)->transformed_meas.push_back(W_R_B * ( calib->B_R_C * (*tags)->raw_meas.back() + calib->B_t_C ) + W_t_B);
 
-            pose->data(ports->_buffer[j], self)->pos._value.x = (*tags)->transformed_meas.back().at<float>(0);
-            pose->data(ports->_buffer[j], self)->pos._value.y = (*tags)->transformed_meas.back().at<float>(1);
-            pose->data(ports->_buffer[j], self)->pos._value.z = (*tags)->transformed_meas.back().at<float>(2);
-            pose->data(ports->_buffer[j], self)->ts.sec = frame->data(self)->ts.sec;
-            pose->data(ports->_buffer[j], self)->ts.nsec = frame->data(self)->ts.nsec;
+            pose->data(ports->_buffer[j], self)->pos._value =
+            {
+                (*tags)->transformed_meas.back().at<float>(0),
+                (*tags)->transformed_meas.back().at<float>(1),
+                (*tags)->transformed_meas.back().at<float>(2)
+            };
+            pose->data(ports->_buffer[j], self)->ts = frame->data(self)->ts;
             pose->write(ports->_buffer[j], self);
         }
         return arucotag_log;
@@ -287,17 +317,17 @@ add_marker(const char marker[128], sequence_arucotag_portinfo *ports,
     pose->data(marker, self)->acc._present = false;
     pose->data(marker, self)->aacc._present = false;
 
-    pose->data(marker, self)->pos_cov._value.cov[0] = sigma_x*sigma_x;
-    pose->data(marker, self)->pos_cov._value.cov[1] = sigma_x*sigma_y;
-    pose->data(marker, self)->pos_cov._value.cov[2] = sigma_x*sigma_z;
-    pose->data(marker, self)->pos_cov._value.cov[3] = sigma_y*sigma_y;
-    pose->data(marker, self)->pos_cov._value.cov[4] = sigma_y*sigma_z;
-    pose->data(marker, self)->pos_cov._value.cov[5] = sigma_z*sigma_z;
-    // pose->data(marker, self)->pos_cov._value.cov[5] = 0;
+    pose->data(marker, self)->pos_cov._value =
+    {
+        sigma_x*sigma_x,
+        sigma_x*sigma_y,
+        sigma_x*sigma_z,
+        sigma_y*sigma_y,
+        sigma_y*sigma_z,
+        sigma_z*sigma_z
+    };
 
-    pose->data(marker, self)->vel._value.vx = 0;
-    pose->data(marker, self)->vel._value.vy = 0;
-    pose->data(marker, self)->vel._value.vz = 0;
+    pose->data(marker, self)->vel._value = {0, 0, 0};
 
     warnx("tracking new marker: %s", marker);
 

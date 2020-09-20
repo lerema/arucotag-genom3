@@ -33,7 +33,6 @@
 
 #include <iostream>
 #include <sys/time.h>
-#include <iostream>
 #include <aio.h>
 #include <fcntl.h>
 #include <unistd.h>
