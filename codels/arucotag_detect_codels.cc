@@ -73,11 +73,11 @@ detect_wait(float length, const arucotag_intrinsics *intrinsics,
         (*calib)->K.at<float>(0,2) = intrinsics->data(self)->calib.cy;
         (*calib)->K.at<float>(1,2) = intrinsics->data(self)->calib.gamma;
         (*calib)->K.at<float>(2,2) = 1;
-        (*calib)->D.at<float>(0,0) = intrinsics->data(self)->disto.k1;
-        (*calib)->D.at<float>(1,1) = intrinsics->data(self)->disto.k2;
-        (*calib)->D.at<float>(0,2) = intrinsics->data(self)->disto.k3;
-        (*calib)->D.at<float>(1,2) = intrinsics->data(self)->disto.p1;
-        (*calib)->D.at<float>(0,1) = intrinsics->data(self)->disto.p2;
+        (*calib)->D.at<float>(0) = intrinsics->data(self)->disto.k1;
+        (*calib)->D.at<float>(1) = intrinsics->data(self)->disto.k2;
+        (*calib)->D.at<float>(2) = intrinsics->data(self)->disto.k3;
+        (*calib)->D.at<float>(3) = intrinsics->data(self)->disto.p1;
+        (*calib)->D.at<float>(4) = intrinsics->data(self)->disto.p2;
 
         return arucotag_detect;
     }
