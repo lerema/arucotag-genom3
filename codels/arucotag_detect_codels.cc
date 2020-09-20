@@ -244,7 +244,7 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
         }
         if ((*log)->req.aio_fildes >= 0 && !(*log)->pending)
         {
-            struct timeval tv;
+            timeval tv;
             gettimeofday(&tv, NULL);
             char buffer[512];
             (*log)->req.aio_nbytes = 0;
@@ -312,8 +312,10 @@ add_marker(const char marker[128], sequence_arucotag_portinfo *ports,
     pose->open(marker, self);
 
     pose->data(marker, self)->pos._present = true;
+    pose->data(marker, self)->pos_cov._present = true;
     pose->data(marker, self)->att._present = false;
     pose->data(marker, self)->vel._present = true;
+    pose->data(marker, self)->vel_cov._present = true;
     pose->data(marker, self)->avel._present = false;
     pose->data(marker, self)->acc._present = false;
     pose->data(marker, self)->aacc._present = false;
@@ -329,6 +331,7 @@ add_marker(const char marker[128], sequence_arucotag_portinfo *ports,
     };
 
     pose->data(marker, self)->vel._value = {0, 0, 0};
+    pose->data(marker, self)->vel_cov._value = {0.01, 0.01, 0.01, 0.01, 0.01, 0.01};
 
     warnx("tracking new marker: %s", marker);
 
