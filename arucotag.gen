@@ -53,7 +53,7 @@ component arucotag {
 
     /* ---- Ports --------------------------------------------------------- */
     port multiple out or_pose_estimator::state pose;
-    port in  or_pose_estimator::state drone;
+    port in or_pose_estimator::state drone;
     /* interfaces ports:
      *  port in   or::sensor::frame         frame;
      *  port in   or::sensor::intrinsics    intrinsics;
@@ -100,7 +100,7 @@ component arucotag {
     attribute set_length(in length = : "Length of tags");
 
     /* ---- Logging ------------------------------------------------------- */
-    function log(in string<64> path = "/tmp/arucotags.log": "Log file name",
+    function log(in string<64> path = "/tmp/arucotag.log": "Log file name",
                  in unsigned long decimation = 1: "Reduced logging frequency") {
         throw e_sys;
         codel log_start(in path, in decimation, inout log);
