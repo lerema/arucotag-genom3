@@ -331,7 +331,7 @@ add_marker(const char marker[128], sequence_arucotag_portinfo *ports,
     };
 
     pose->data(marker, self)->vel._value = {0, 0, 0};
-    pose->data(marker, self)->vel_cov._value = {0.01, 0.01, 0.01, 0.01, 0.01, 0.01};
+    pose->data(marker, self)->vel_cov._value = {0., 0., 0., 0., 0., 0.};
 
     warnx("tracking new marker: %s", marker);
 
