@@ -73,7 +73,7 @@ detect_wait(float length, const arucotag_intrinsics *intrinsics,
         float p = extrinsics->data(self)->rot.pitch;
         float y = extrinsics->data(self)->rot.yaw;
         (*calib)->B_R_C = (Mat_<float>(3,3) <<
-            cos(p)*cos(y), sin(r)*sin(p)*cos(y) - cos(r)*sin(y), sin(r)*sin(p)*cos(y) + sin(r)*sin(y),
+            cos(p)*cos(y), sin(r)*sin(p)*cos(y) - cos(r)*sin(y), cos(r)*sin(p)*cos(y) + sin(r)*sin(y),
             cos(p)*sin(y), sin(r)*sin(p)*sin(y) + cos(r)*cos(y), cos(r)*sin(p)*sin(y) - sin(r)*cos(y),
                   -sin(p),                        sin(r)*cos(p),                        cos(r)*cos(p)
         );

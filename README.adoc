@@ -102,6 +102,10 @@ a|.Data structure
 a|.Data structure
 [disc]
  * `struct ::or::sensor::extrinsics` `extrinsics`
+ ** `struct ::or::sensor::translation` `trans`
+ *** `float` `tx`
+ *** `float` `ty`
+ *** `float` `tz`
  ** `struct ::or::sensor::rotation` `rot`
  *** `float` `roll`
  *** `float` `pitch`
