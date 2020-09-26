@@ -46,6 +46,7 @@ component arucotag {
     /* ---- Types --------------------------------------------------------- */
     native calib;
     native detector;
+    native predictor;
 
     native log_s;
 
@@ -65,6 +66,7 @@ component arucotag {
         float length;
         calib calib;
         detector tags;
+        predictor pred;
 
         sequence<portinfo> ports;
 
@@ -72,6 +74,7 @@ component arucotag {
     };
 
     const unsigned short detect_period = 50;
+    const unsigned short predict_period = 5;
 
     /* ---- Main task ----------------------------------------------------- */
     task detect {
@@ -80,19 +83,38 @@ component arucotag {
         codel<start> detect_start(out ::ids)
             yield wait;
 
-        codel<wait> detect_wait(in length, in intrinsics, in extrinsics, in frame, out calib)
-            yield pause::wait, detect;
+        codel<wait> detect_wait(in length, in intrinsics, in frame, out calib)
+            yield pause::wait, main;
 
-        codel<detect> detect_detect(in frame, in length, in calib, out tags, in drone, in ports, out pose)
-            yield log, pause::detect;
+        codel<main> detect_main(in frame, in length, in calib, out tags, in ports)
+            yield pause::main, valid;
+
+        codel<valid> detect_valid(in tags, out pred)
+            yield log;
 
         codel<log> detect_log(in tags, inout log)
-            yield pause::detect;
+            yield pause::main;
+    };
+
+    task predict {
+        period predict_period ms;
+
+        codel<start> predict_start()
+            yield wait;
+
+        codel<wait> predict_wait(in extrinsics, out pred)
+            yield pause::wait, main;
+
+        codel<main> predict_main(inout pred, in drone, out pose)
+            yield pause::main, log;
+
+        codel<log> predict_log(in pred, inout log)
+            yield pause::main;
     };
 
     activity add_marker(in string<128> marker = : "Marker name") {
         task detect;
-        codel<start> add_marker(in marker, out ports, out pose)
+        codel<start> add_marker(in marker, out pred, out ports, out pose)
             yield ether;
     };
 

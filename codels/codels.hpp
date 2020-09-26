@@ -44,19 +44,44 @@ using namespace cv;
 struct  arucotag_calib {
     Mat K = Mat::zeros(Size(3,3), CV_32F);
     Mat D = Mat::zeros(Size(1,5), CV_32F);
-    Mat B_R_C = Mat::eye(Size(3,3), CV_32F);
-    Mat B_t_C = Mat::zeros(Size(1,3), CV_32F);
 };
 
 struct arucotag_detector {
-    Mat frame;
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250);
     vector<int> valid_ids;
-    vector<Mat> raw_meas, transformed_meas;
+    vector<Mat> meas;
+};
+
+struct kalmanfilter {
+    KalmanFilter kf;
+    uint16_t id;
+    Mat state;
+
+    kalmanfilter(uint16_t i)
+    {
+        id = i;
+        kf.init(3, 3, 6, CV_32F);
+
+        setIdentity(kf.processNoiseCov, Scalar::all(1e-2)); // Trust in predict step: the less, the more trust
+        setIdentity(kf.measurementNoiseCov, Scalar::all(5e-3)); // Trust in correct step: the less, the more trust
+
+        setIdentity(kf.measurementMatrix); // 3,3
+        setIdentity(kf.transitionMatrix); // 3,3
+        setIdentity(kf.controlMatrix); // 3,6
+    }
+};
+
+struct arucotag_predictor {
+    vector<int> new_detections;
+    vector<Mat> meas;
+    vector<kalmanfilter> filters;
+    Mat C_T_B = Mat::eye(6, 6, CV_32F);
+
+    void add(uint16_t i) { filters.push_back(kalmanfilter(i)); }
 };
 
 struct arucotag_log_s {
-    struct aiocb req;
+    aiocb req;
     char buffer[4096];
     bool pending, skipped;
     uint32_t decimation;
@@ -67,10 +92,9 @@ struct arucotag_log_s {
     }
     # define arucotag_logfmt	"%g "
     # define arucotag_log_header                                            \
-        "ts i C_x C_y C_z W_x W_y W_z "
+        "ts i mode x y z "
     # define arucotag_log_fmt                                               \
-        "%ld.%09ld %i "                                                     \
-        arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
+        "%ld.%09ld %i %i "                                                  \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt
 };
 

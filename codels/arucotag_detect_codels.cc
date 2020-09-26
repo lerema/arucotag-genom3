@@ -43,8 +43,9 @@ detect_start(arucotag_ids *ids, const genom_context self)
 {
     // Init IDS fields
     ids->length = 0;
-    ids->tags = new arucotag_detector();
     ids->calib = new arucotag_calib();
+    ids->tags = new arucotag_detector();
+    ids->pred = new arucotag_predictor();
     ids->log = new arucotag_log_s();
 
     return arucotag_wait;
@@ -54,34 +55,18 @@ detect_start(arucotag_ids *ids, const genom_context self)
 /** Codel detect_wait of task detect.
  *
  * Triggered by arucotag_wait.
- * Yields to arucotag_pause_wait, arucotag_detect.
+ * Yields to arucotag_pause_wait, arucotag_main.
  */
 genom_event
 detect_wait(float length, const arucotag_intrinsics *intrinsics,
-            const arucotag_extrinsics *extrinsics,
             const arucotag_frame *frame, arucotag_calib **calib,
             const genom_context self)
 {
     if (intrinsics->read(self) == genom_ok && intrinsics->data(self) &&
-        extrinsics->read(self) == genom_ok && extrinsics->data(self) &&
         frame->read(self) == genom_ok && frame->data(self) &&
         frame->data(self)->pixels._length > 0 &&
         length > 0)
     {
-        // Init static extr and intr and yield to detect codel
-        float r = extrinsics->data(self)->rot.roll;
-        float p = extrinsics->data(self)->rot.pitch;
-        float y = extrinsics->data(self)->rot.yaw;
-        (*calib)->B_R_C = (Mat_<float>(3,3) <<
-            cos(p)*cos(y), sin(r)*sin(p)*cos(y) - cos(r)*sin(y), cos(r)*sin(p)*cos(y) + sin(r)*sin(y),
-            cos(p)*sin(y), sin(r)*sin(p)*sin(y) + cos(r)*cos(y), cos(r)*sin(p)*sin(y) - sin(r)*cos(y),
-                  -sin(p),                        sin(r)*cos(p),                        cos(r)*cos(p)
-        );
-        (*calib)->B_t_C = (Mat_<float>(3,1) <<
-            extrinsics->data(self)->trans.tx,
-            extrinsics->data(self)->trans.ty,
-            extrinsics->data(self)->trans.tz
-        );
         or_sensor_calibration* c = &(intrinsics->data(self)->calib);
         (*calib)->K = (Mat_<float>(3,3) <<
             c->fx, c->gamma, c->cx,
@@ -95,38 +80,32 @@ detect_wait(float length, const arucotag_intrinsics *intrinsics,
             intrinsics->data(self)->disto.p1,
             intrinsics->data(self)->disto.p2
         );
-        return arucotag_detect;
+        return arucotag_main;
     }
     else
         return arucotag_pause_wait;
 }
 
 
-/** Codel detect_detect of task detect.
+/** Codel detect_main of task detect.
  *
- * Triggered by arucotag_detect.
- * Yields to arucotag_log, arucotag_pause_detect.
+ * Triggered by arucotag_main.
+ * Yields to arucotag_pause_main, arucotag_valid.
  */
 genom_event
-detect_detect(const arucotag_frame *frame, float length,
-              const arucotag_calib *calib, arucotag_detector **tags,
-              const arucotag_drone *drone,
-              const sequence_arucotag_portinfo *ports,
-              const arucotag_pose *pose, const genom_context self)
+detect_main(const arucotag_frame *frame, float length,
+            const arucotag_calib *calib, arucotag_detector **tags,
+            const sequence_arucotag_portinfo *ports,
+            const genom_context self)
 {
     // Sleep if no marker is tracked
-    if (!ports->_length) return arucotag_pause_detect;
-
-    // Check if any drone state is published
-    bool nostate = true;
-    if (drone->read(self) == genom_ok && drone->data(self))
-        nostate = false;
+    if (!ports->_length) return arucotag_pause_main;
 
     frame->read(self);
     or_sensor_frame* fdata = frame->data(self);
 
     // Convert frame to cv::Mat
-    (*tags)->frame = Mat(
+    Mat cvframe = Mat(
         Size(fdata->width, fdata->height),
         (fdata->bpp == 1) ? CV_8UC1 : CV_8UC3,
         (void*)fdata->pixels._buffer,
@@ -136,11 +115,7 @@ detect_detect(const arucotag_frame *frame, float length,
     // Detect tags in frame
     vector<int> ids;
     vector<vector<Point2f>> corners;
-    aruco::detectMarkers((*tags)->frame, (*tags)->dict, corners, ids);
-
-    (*tags)->raw_meas.clear();
-    (*tags)->transformed_meas.clear();
-    (*tags)->valid_ids.clear();
+    aruco::detectMarkers(cvframe, (*tags)->dict, corners, ids);
 
     // Estimate pose from corners
     if (ids.size() > 0)
@@ -148,35 +123,11 @@ detect_detect(const arucotag_frame *frame, float length,
         vector<Vec3d> translations, rotations;
         aruco::estimatePoseSingleMarkers(corners, length, calib->K, calib->D, rotations, translations);
 
-        // Convert to world frame
-        Mat W_R_B, W_t_B;
-        if (nostate)
-        {
-            W_R_B = Mat::eye(Size(3,3), CV_32F);
-            W_t_B = Mat::zeros(Size(1,3), CV_32F);
-        }
-        else
-        {
-            double qw = drone->data(self)->att._value.qw;
-            double qx = drone->data(self)->att._value.qx;
-            double qy = drone->data(self)->att._value.qy;
-            double qz = drone->data(self)->att._value.qz;
-            W_R_B = (Mat_<float>(3,3) <<
-                1 - 2*qy*qy - 2*qz*qz,     2*qx*qy - 2*qz*qw,     2*qx*qz + 2*qy*qw,
-                    2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz,     2*qy*qz - 2*qx*qw,
-                    2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy
-            );
-            W_t_B = (Mat_<float>(3,1) <<
-                drone->data(self)->pos._value.x,
-                drone->data(self)->pos._value.y,
-                drone->data(self)->pos._value.z
-            );
-        }
-
-        // Publish
+        (*tags)->valid_ids.clear();
+        (*tags)->meas.clear();
+        // Check that detected tags are among tracked markers
         for (uint16_t i=0; i<ids.size(); i++)
         {
-            // Check that detected tag is among tracked markers
             const char* id = to_string(ids[i]).c_str();
             uint16_t j = 0;
             for (j=0; j<ports->_length; j++)
@@ -185,33 +136,40 @@ detect_detect(const arucotag_frame *frame, float length,
             if (j >= ports->_length) continue;
 
             (*tags)->valid_ids.push_back(ids[i]);
-            (*tags)->raw_meas.push_back((Mat_<float>(3,1) <<
+            (*tags)->meas.push_back((Mat_<float>(3,1) <<
                 translations[i][0],
                 translations[i][1],
                 translations[i][2]
             ));
-
-            (*tags)->transformed_meas.push_back(W_R_B * ( calib->B_R_C * (*tags)->raw_meas.back() + calib->B_t_C ) + W_t_B);
-
-            pose->data(ports->_buffer[j], self)->pos._value =
-            {
-                (*tags)->transformed_meas.back().at<float>(0),
-                (*tags)->transformed_meas.back().at<float>(1),
-                (*tags)->transformed_meas.back().at<float>(2)
-            };
-            pose->data(ports->_buffer[j], self)->ts = frame->data(self)->ts;
-            pose->write(ports->_buffer[j], self);
         }
-        return arucotag_log;
+
+        if ((*tags)->valid_ids.size())
+            return arucotag_valid;
     }
-    return arucotag_pause_detect;
+    return arucotag_pause_main;
+}
+
+
+/** Codel detect_valid of task detect.
+ *
+ * Triggered by arucotag_valid.
+ * Yields to arucotag_log.
+ */
+genom_event
+detect_valid(const arucotag_detector *tags, arucotag_predictor **pred,
+             const genom_context self)
+{
+    (*pred)->meas = tags->meas;
+    (*pred)->new_detections = tags->valid_ids;
+
+    return arucotag_log;
 }
 
 
 /** Codel detect_log of task detect.
  *
  * Triggered by arucotag_log.
- * Yields to arucotag_pause_detect.
+ * Yields to arucotag_pause_main.
  */
 genom_event
 detect_log(const arucotag_detector *tags, arucotag_log_s **log,
@@ -256,12 +214,10 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
                     (*log)->skipped ? "\n" : "",
                     tv.tv_sec, tv.tv_usec*1000,
                     tags->valid_ids[i],
-                    tags->raw_meas[i].at<float>(0),
-                    tags->raw_meas[i].at<float>(1),
-                    tags->raw_meas[i].at<float>(2),
-                    tags->transformed_meas[i].at<float>(0),
-                    tags->transformed_meas[i].at<float>(1),
-                    tags->transformed_meas[i].at<float>(2)
+                    0,
+                    tags->meas[i].at<float>(0),
+                    tags->meas[i].at<float>(1),
+                    tags->meas[i].at<float>(2)
                 );
                 if (i==0) strcpy((*log)->buffer, buffer);
                 else      strcat((*log)->buffer, buffer);
@@ -277,7 +233,7 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
             (*log)->skipped = false;
         }
     }
-    return arucotag_pause_detect;
+    return arucotag_pause_main;
 }
 
 
@@ -289,7 +245,8 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
  * Yields to arucotag_ether.
  */
 genom_event
-add_marker(const char marker[128], sequence_arucotag_portinfo *ports,
+add_marker(const char marker[128], arucotag_predictor **pred,
+           sequence_arucotag_portinfo *ports,
            const arucotag_pose *pose, const genom_context self)
 {
     // Add new marker in port list
@@ -303,35 +260,18 @@ add_marker(const char marker[128], sequence_arucotag_portinfo *ports,
         ports->_length = i + 1;
     }
     strncpy(ports->_buffer[i], marker, 128);
+    (*pred)->add(std::stoi(marker));
 
     // Init new out port
-    double sigma_x = 0.05;
-    double sigma_y = 0.05;
-    double sigma_z = 0.05;
-
     pose->open(marker, self);
 
     pose->data(marker, self)->pos._present = true;
     pose->data(marker, self)->pos_cov._present = true;
     pose->data(marker, self)->att._present = false;
-    pose->data(marker, self)->vel._present = true;
-    pose->data(marker, self)->vel_cov._present = true;
+    pose->data(marker, self)->vel._present = false;
     pose->data(marker, self)->avel._present = false;
     pose->data(marker, self)->acc._present = false;
     pose->data(marker, self)->aacc._present = false;
-
-    pose->data(marker, self)->pos_cov._value =
-    {
-        sigma_x*sigma_x,
-        sigma_x*sigma_y,
-        sigma_x*sigma_z,
-        sigma_y*sigma_y,
-        sigma_y*sigma_z,
-        sigma_z*sigma_z
-    };
-
-    pose->data(marker, self)->vel._value = {0, 0, 0};
-    pose->data(marker, self)->vel_cov._value = {0., 0., 0., 0., 0., 0.};
 
     warnx("tracking new marker: %s", marker);
 
