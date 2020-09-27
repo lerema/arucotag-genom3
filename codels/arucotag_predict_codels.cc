@@ -54,29 +54,37 @@ predict_start(const genom_context self)
  */
 genom_event
 predict_wait(const arucotag_extrinsics *extrinsics,
-             arucotag_predictor **pred, const genom_context self)
+             arucotag_calib **calib, arucotag_predictor **pred,
+             const genom_context self)
 {
     if (extrinsics->read(self) == genom_ok && extrinsics->data(self)
         && (*pred)->new_detections.size() != 0)
     {
         // Init static extr and intr and yield to detect codel
+        (*calib)->B_t_C = (Mat_<float>(3,1) <<
+            extrinsics->data(self)->trans.tx,
+            extrinsics->data(self)->trans.ty,
+            extrinsics->data(self)->trans.tz
+        );
         float r = extrinsics->data(self)->rot.roll;
         float p = extrinsics->data(self)->rot.pitch;
         float y = extrinsics->data(self)->rot.yaw;
-        Mat rot = (Mat_<float>(3,3) <<
+        (*calib)->B_R_C = (Mat_<float>(3,3) <<
             cos(p)*cos(y), sin(r)*sin(p)*cos(y) - cos(r)*sin(y), cos(r)*sin(p)*cos(y) + sin(r)*sin(y),
             cos(p)*sin(y), sin(r)*sin(p)*sin(y) + cos(r)*cos(y), cos(r)*sin(p)*sin(y) - sin(r)*cos(y),
                   -sin(p),                        sin(r)*cos(p),                        cos(r)*cos(p)
         );
-        rot = rot.t();
+
+        Mat rot = (*calib)->B_R_C.t();
         double tx = -extrinsics->data(self)->trans.tx;
         double ty = -extrinsics->data(self)->trans.ty;
         double tz = -extrinsics->data(self)->trans.tz;
         Mat t = (Mat_<float>(3,3) <<
-            0,  tx, -ty,
+            0,  tz, -ty,
           -tz,   0,  tx,
-           ty, -tz,   0
+           ty, -tx,   0
         );
+
         // Fixed transformation matrix from drone to camera
         // (t is translation from drone to camera)
         // (r is rotation from drone to camera)
@@ -103,14 +111,19 @@ predict_wait(const arucotag_extrinsics *extrinsics,
  * Yields to arucotag_pause_main, arucotag_log.
  */
 genom_event
-predict_main(arucotag_predictor **pred, const arucotag_drone *drone,
-             const arucotag_pose *pose, const genom_context self)
+predict_main(const arucotag_calib *calib, arucotag_predictor **pred,
+             const arucotag_drone *drone, const arucotag_pose *pose,
+             const genom_context self)
 {
     // 1- Get control
-    Mat control;
-    bool no_control = !(drone->read(self) == genom_ok && drone->data(self));
-    if (no_control)
+    Mat control, W_t_B, W_R_B;
+    bool nostate = !(drone->read(self) == genom_ok && drone->data(self));
+    if (nostate)
+    {
         control = Mat::zeros(6, 1, CV_32F);
+        W_R_B = Mat::zeros(3, 3, CV_32F);
+        W_t_B = Mat::zeros(3, 1, CV_32F);
+    }
     else
     {
         control = (Mat_<float>(6,1) <<
@@ -131,16 +144,21 @@ predict_main(arucotag_predictor **pred, const arucotag_drone *drone,
         // [ 0   0   0  r11 r12 r13 ]  [ wx ]
         // [ 0   0   0  r21 r22 r23 ]  [ wy ]
         // [ 0   0   0  r31 r32 r33 ]  [ wz ]
+        W_t_B = (Mat_<float>(3,1) <<
+            drone->data(self)->pos._value.x,
+            drone->data(self)->pos._value.y,
+            drone->data(self)->pos._value.z
+        );
         double qw = drone->data(self)->att._value.qw;
         double qx = drone->data(self)->att._value.qx;
         double qy = drone->data(self)->att._value.qy;
         double qz = drone->data(self)->att._value.qz;
-        Mat r = (Mat_<float>(3,3) <<
+        W_R_B = (Mat_<float>(3,3) <<
             1 - 2*qy*qy - 2*qz*qz,     2*qx*qy - 2*qz*qw,     2*qx*qz + 2*qy*qw,
                 2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz,     2*qy*qz - 2*qx*qw,
                 2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy
         );
-        r = r.t();
+        Mat r = W_R_B.t();
         Mat B_T_W = Mat::eye(6, 6, CV_32F);
         r.copyTo(B_T_W(Range(0,3),Range(0,3)));
         r.copyTo(B_T_W(Range(3,6),Range(3,6)));
@@ -155,12 +173,14 @@ predict_main(arucotag_predictor **pred, const arucotag_drone *drone,
         vector<int>::iterator j = find(v->begin(), v->end(), (*pred)->filters[i].id);
 
         if ((*pred)->filters[i].state.empty())
+        {
             // Init the kf state if its a new one
             if (j != v->end())
                 (*pred)->meas[j - v->begin()].copyTo((*pred)->filters[i].state);
+        }
         else
         {
-            if (!no_control)
+            if (!nostate)
             {
                 // 1.2- Compute control matrix as function of (dt,X)
                 // [ -dt   0   0     0  dt*z -dt*y ]  [ vx ]
@@ -190,6 +210,20 @@ predict_main(arucotag_predictor **pred, const arucotag_drone *drone,
             // 4- Update
             // (*pred)->filters[i].state is updated to statePre if no measurement, statePost if there is
             // idem for covariances but they are not published ATM
+
+            // 5- Publish
+            Mat W_r = W_R_B * (calib->B_R_C * (*pred)->filters[i].state + calib->B_t_C) + W_t_B;
+            pose->data(to_string((*pred)->filters[i].id).c_str(), self)->pos._value =
+            {
+                W_r.at<float>(0),
+                W_r.at<float>(1),
+                W_r.at<float>(2)
+            };
+            timeval tv;
+            gettimeofday(&tv, NULL);
+            pose->data(to_string((*pred)->filters[i].id).c_str(), self)->ts.sec = tv.tv_sec;
+            pose->data(to_string((*pred)->filters[i].id).c_str(), self)->ts.nsec = tv.tv_usec*1000;
+            pose->write(to_string((*pred)->filters[i].id).c_str(), self);
         }
     }
 
