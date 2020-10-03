@@ -63,13 +63,6 @@ struct kalmanfilter {
     {
         id = i;
         kf.init(3, 3, 6, CV_32F);
-
-        setIdentity(kf.processNoiseCov, Scalar::all(1e-3)); // Trust in predict step: the less, the more trust
-        setIdentity(kf.measurementNoiseCov, Scalar::all(1e-2)); // Trust in correct step: the less, the more trust
-
-        setIdentity(kf.measurementMatrix); // 3,3
-        setIdentity(kf.transitionMatrix); // 3,3
-        setIdentity(kf.controlMatrix); // 3,6
     }
 };
 

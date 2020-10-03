@@ -116,13 +116,14 @@ predict_main(float length, const arucotag_calib *calib,
              const arucotag_pose *pose, const genom_context self)
 {
     // 1- Get control
-    Mat control, W_t_B, W_R_B;
+    Mat control, control_cov, W_t_B, W_R_B;
     bool nostate = !(drone->read(self) == genom_ok && drone->data(self));
     if (nostate)
     {
         control = Mat::zeros(6, 1, CV_32F);
         W_R_B = Mat::zeros(3, 3, CV_32F);
         W_t_B = Mat::zeros(3, 1, CV_32F);
+        setIdentity(control_cov, Scalar::all(1e-3));
     }
     else
     {
@@ -164,6 +165,21 @@ predict_main(float length, const arucotag_calib *calib,
         r.copyTo(B_T_W(Range(3,6),Range(3,6)));
 
         control = (*pred)->C_T_B * B_T_W * control;
+
+        // 1.2- Compute control covariance
+        double* vc = drone->data(self)->vel_cov._value.cov;
+        double* wc = drone->data(self)->avel_cov._value.cov;
+        Mat Q_v = (Mat_<float>(3,3) <<
+            vc[0], vc[1], vc[3],
+            vc[1], vc[2], vc[2],
+            vc[3], vc[4], vc[5]
+        );
+        Mat Q_w = (Mat_<float>(3,3) <<
+            wc[0], wc[1], wc[3],
+            wc[1], wc[2], wc[2],
+            wc[3], wc[4], wc[5]
+        );
+        control_cov = Q_v+Q_w;
     }
 
     for (uint16_t i=0; i<(*pred)->filters.size(); i++)
@@ -182,7 +198,7 @@ predict_main(float length, const arucotag_calib *calib,
         {
             if (!nostate)
             {
-                // 1.2- Compute control matrix as function of (dt,X)
+                // 1.3- Compute control matrix as function of (dt,X)
                 // [ -dt   0   0     0  dt*z -dt*y ]  [ vx ]
                 // [   0 -dt   0 -dt*z     0  dt*x ]  [ vy ]
                 // [   0   0 -dt  dt*y -dt*x     0 ]  [ vz ]
@@ -201,6 +217,7 @@ predict_main(float length, const arucotag_calib *calib,
             }
 
             // 2- Predict with controls
+            (*pred)->filters[i].kf.processNoiseCov = control_cov;
             (*pred)->filters[i].state = (*pred)->filters[i].kf.predict(control);
 
             // 3- Correct if new measurement
@@ -246,9 +263,9 @@ predict_main(float length, const arucotag_calib *calib,
                     Mat J_full = J_pix*J_proj;
                     J_full(Rect(0,0,3,2)).copyTo(J(Rect(0,i*2,3,2)));
                 }
-                (*pred)->filters[i].kf.measurementNoiseCov = sigma_p*sigma_p * (J.t() * J).inv();
-                cout << (*pred)->filters[i].kf.measurementNoiseCov << endl;
+
                 // 3.2- Correct
+                (*pred)->filters[i].kf.measurementNoiseCov = sigma_p*sigma_p * (J.t() * J).inv();
                 (*pred)->filters[i].state = (*pred)->filters[i].kf.correct(C_t_M);
             }
 
