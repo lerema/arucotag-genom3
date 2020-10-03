@@ -27,6 +27,31 @@
 
 #include "codels.hpp"
 
+/* --- Function reset --------------------------------------------------- */
+
+/** Codel reset of function reset.
+ *
+ * Returns genom_ok.
+ */
+genom_event
+reset(const sequence_arucotag_portinfo *ports,
+      arucotag_predictor **pred, bool *reset,
+      const genom_context self)
+{
+    (*pred)->filters.clear();
+    (*pred)->meas.clear();
+    (*pred)->new_detections.clear();
+
+    for(uint16_t i=0; i<ports->_length; i++)
+        (*pred)->add(std::stoi(ports->_buffer[i]));
+
+    *reset = true;
+
+    warnx("reset all tracked markers");
+    return genom_ok;
+}
+
+
 /* --- Function log ----------------------------------------------------- */
 
 /** Codel log_start of function log.

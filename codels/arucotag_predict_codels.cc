@@ -55,7 +55,7 @@ predict_start(const genom_context self)
 genom_event
 predict_wait(const arucotag_extrinsics *extrinsics,
              arucotag_calib **calib, arucotag_predictor **pred,
-             const genom_context self)
+             bool *reset, const genom_context self)
 {
     if (extrinsics->read(self) == genom_ok && extrinsics->data(self)
         && (*pred)->new_detections.size() != 0)
@@ -75,14 +75,14 @@ predict_wait(const arucotag_extrinsics *extrinsics,
                   -sin(p),                        sin(r)*cos(p),                        cos(r)*cos(p)
         );
 
-        Mat rot = (*calib)->B_R_C.t();
-        double tx = -extrinsics->data(self)->trans.tx;
-        double ty = -extrinsics->data(self)->trans.ty;
-        double tz = -extrinsics->data(self)->trans.tz;
-        Mat t = (Mat_<float>(3,3) <<
-            0,  tz, -ty,
-          -tz,   0,  tx,
-           ty, -tx,   0
+        Mat C_R_B = (*calib)->B_R_C.t();
+        double tx = extrinsics->data(self)->trans.tx;
+        double ty = extrinsics->data(self)->trans.ty;
+        double tz = extrinsics->data(self)->trans.tz;
+        Mat C_t_B_skew = (Mat_<float>(3,3) <<
+            0, -tz,  ty,
+           tz,   0, -tx,
+          -ty,  tx,   0
         );
 
         // Fixed transformation matrix from drone to camera
@@ -94,27 +94,32 @@ predict_wait(const arucotag_extrinsics *extrinsics,
         // [   0   0   0  r11 r12 r13 ]  [ wx ]
         // [   0   0   0  r21 r22 r23 ]  [ wy ]
         // [   0   0   0  r31 r32 r33 ]  [ wz ]
-        rot.copyTo((*pred)->C_T_B(Range(0,3),Range(0,3)));
-        rot.copyTo((*pred)->C_T_B(Range(3,6),Range(3,6)));
-        t.copyTo((*pred)->C_T_B(Range(0,3),Range(3,6)));
+        C_R_B.copyTo((*pred)->C_T_B(Range(0,3),Range(0,3)));
+        C_R_B.copyTo((*pred)->C_T_B(Range(3,6),Range(3,6)));
+        C_t_B_skew.copyTo((*pred)->C_T_B(Range(0,3),Range(3,6)));
 
         return arucotag_main;
     }
     else
+    {
+        *reset = false;
         return arucotag_pause_wait;
+    }
 }
 
 
 /** Codel predict_main of task predict.
  *
  * Triggered by arucotag_main.
- * Yields to arucotag_pause_main, arucotag_log.
+ * Yields to arucotag_pause_wait, arucotag_pause_main, arucotag_log.
  */
 genom_event
-predict_main(float length, const arucotag_calib *calib,
+predict_main(bool reset, float length, const arucotag_calib *calib,
              arucotag_predictor **pred, const arucotag_drone *drone,
              const arucotag_pose *pose, const genom_context self)
 {
+    if (reset) return arucotag_pause_wait;
+
     // 1- Get control
     Mat control, control_cov, W_t_B, W_R_B;
     bool nostate = !(drone->read(self) == genom_ok && drone->data(self));
@@ -159,10 +164,10 @@ predict_main(float length, const arucotag_calib *calib,
                 2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz,     2*qy*qz - 2*qx*qw,
                 2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy
         );
-        Mat r = W_R_B.t();
+        Mat B_R_W = W_R_B.t();
         Mat B_T_W = Mat::eye(6, 6, CV_32F);
-        r.copyTo(B_T_W(Range(0,3),Range(0,3)));
-        r.copyTo(B_T_W(Range(3,6),Range(3,6)));
+        B_R_W.copyTo(B_T_W(Range(0,3),Range(0,3)));
+        B_R_W.copyTo(B_T_W(Range(3,6),Range(3,6)));
 
         control = (*pred)->C_T_B * B_T_W * control;
 
@@ -192,7 +197,11 @@ predict_main(float length, const arucotag_calib *calib,
         {
             // Init the kf state if its a new one
             if (j != v->end())
-                (*pred)->meas[j - v->begin()].copyTo((*pred)->filters[i].state);
+            {
+                (*pred)->meas[j - v->begin()](Rect(0,0,1,3)).copyTo((*pred)->filters[i].state);
+                (*pred)->filters[i].state.copyTo((*pred)->filters[i].kf.statePre);
+                (*pred)->filters[i].state.copyTo((*pred)->filters[i].kf.statePost);
+            }
         }
         else
         {
@@ -221,7 +230,8 @@ predict_main(float length, const arucotag_calib *calib,
             (*pred)->filters[i].state = (*pred)->filters[i].kf.predict(control);
 
             // 3- Correct if new measurement
-            if (j != v->end()) {
+            if (j != v->end())
+            {
                 // 3.1- Compute measurement covariance
                 // read transformation from camera to marker
                 Mat C_t_M = (*pred)->meas[j - v->begin()](Rect(0,0,1,3));
@@ -272,26 +282,28 @@ predict_main(float length, const arucotag_calib *calib,
             // 4- Update
             // (*pred)->filters[i].state is updated to statePre if no measurement, statePost if there is
             // idem for covariances but they are not published ATM
-
-            // 5- Publish
-            Mat W_r = W_R_B * (calib->B_R_C * (*pred)->filters[i].state + calib->B_t_C) + W_t_B;
-            pose->data(to_string((*pred)->filters[i].id).c_str(), self)->pos._value =
-            {
-                W_r.at<float>(0),
-                W_r.at<float>(1),
-                W_r.at<float>(2)
-            };
-            timeval tv;
-            gettimeofday(&tv, NULL);
-            pose->data(to_string((*pred)->filters[i].id).c_str(), self)->ts.sec = tv.tv_sec;
-            pose->data(to_string((*pred)->filters[i].id).c_str(), self)->ts.nsec = tv.tv_usec*1000;
-            pose->write(to_string((*pred)->filters[i].id).c_str(), self);
         }
+        // 5- Publish
+        Mat W_r = W_R_B * (calib->B_R_C * (*pred)->filters[i].state + calib->B_t_C) + W_t_B;
+        pose->data(to_string((*pred)->filters[i].id).c_str(), self)->pos._value =
+        {
+            W_r.at<float>(0),
+            W_r.at<float>(1),
+            W_r.at<float>(2)
+        };
+        timeval tv;
+        gettimeofday(&tv, NULL);
+        pose->data(to_string((*pred)->filters[i].id).c_str(), self)->ts.sec = tv.tv_sec;
+        pose->data(to_string((*pred)->filters[i].id).c_str(), self)->ts.nsec = tv.tv_usec*1000;
+        pose->write(to_string((*pred)->filters[i].id).c_str(), self);
     }
+
+    (*pred)->new_detections.clear();
 
     for (uint16_t i=0; i<(*pred)->filters.size(); i++)
         if (!((*pred)->filters[i].state.empty()))
             return arucotag_log;
+
     return arucotag_pause_main;
 }
 

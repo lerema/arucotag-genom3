@@ -43,6 +43,7 @@ detect_start(arucotag_ids *ids, const genom_context self)
 {
     // Init IDS fields
     ids->length = 0;
+    ids->reset = false;
     ids->calib = new arucotag_calib();
     ids->tags = new arucotag_detector();
     ids->pred = new arucotag_predictor();
@@ -83,7 +84,9 @@ detect_wait(float length, const arucotag_intrinsics *intrinsics,
         return arucotag_main;
     }
     else
+    {
         return arucotag_pause_wait;
+    }
 }
 
 
@@ -248,7 +251,7 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
  * Yields to arucotag_ether.
  */
 genom_event
-add_marker(const char marker[128], arucotag_predictor **pred,
+add_marker(const char marker[16], arucotag_predictor **pred,
            sequence_arucotag_portinfo *ports,
            const arucotag_pose *pose, const genom_context self)
 {
@@ -257,12 +260,11 @@ add_marker(const char marker[128], arucotag_predictor **pred,
     for(i=0; i<ports->_length; i++)
         if (!strcmp(ports->_buffer[i], marker)) return arucotag_ether;
 
-    if (i >= ports->_length) {
+    if (i >= ports->_maximum)
         if (genom_sequence_reserve(ports, i + 1))
             return arucotag_e_sys_error("add", self);
-        ports->_length = i + 1;
-    }
-    strncpy(ports->_buffer[i], marker, 128);
+    (ports->_length)++;
+    strncpy(ports->_buffer[i], marker, 16);
     (*pred)->add(std::stoi(marker));
 
     // Init new out port
@@ -277,6 +279,5 @@ add_marker(const char marker[128], arucotag_predictor **pred,
     pose->data(marker, self)->aacc._present = false;
 
     warnx("tracking new marker: %s", marker);
-
     return arucotag_ether;
 }

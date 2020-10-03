@@ -299,7 +299,7 @@ a|.Data structure
 |===
 a|.Inputs
 [disc]
- * `string<128>` `marker` Marker name
+ * `string<16>` `marker` Marker name
 
 a|.Context
 [disc]
@@ -307,6 +307,12 @@ a|.Context
   (frequency 20.0 _Hz_)
   * Updates port `<<pose>>`
 |===
+
+'''
+
+[[reset]]
+=== reset (function)
+
 
 '''
 

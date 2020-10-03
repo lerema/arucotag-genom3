@@ -69,6 +69,7 @@ component arucotag {
         predictor pred;
 
         sequence<portinfo> ports;
+        boolean reset;
 
         log_s log;
     };
@@ -102,20 +103,24 @@ component arucotag {
         codel<start> predict_start()
             yield wait;
 
-        codel<wait> predict_wait(in extrinsics, out calib, out pred)
+        codel<wait> predict_wait(in extrinsics, out calib, out pred, inout reset)
             yield pause::wait, main;
 
-        codel<main> predict_main(in length, in calib, inout pred, in drone, out pose)
-            yield pause::main, log;
+        codel<main> predict_main(in reset, in length, in calib, inout pred, in drone, out pose)
+            yield pause::wait, pause::main, log;
 
         codel<log> predict_log(in pred, inout log)
             yield pause::main;
     };
 
-    activity add_marker(in string<128> marker = : "Marker name") {
+    activity add_marker(in string<16> marker = : "Marker name") {
         task detect;
         codel<start> add_marker(in marker, out pred, out ports, out pose)
             yield ether;
+    };
+
+    function reset() {
+        codel reset(in ports, out pred, out reset);
     };
 
     /* ---- Getters/Setters ----------------------------------------------- */
