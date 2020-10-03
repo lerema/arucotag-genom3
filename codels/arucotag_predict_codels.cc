@@ -111,9 +111,9 @@ predict_wait(const arucotag_extrinsics *extrinsics,
  * Yields to arucotag_pause_main, arucotag_log.
  */
 genom_event
-predict_main(const arucotag_calib *calib, arucotag_predictor **pred,
-             const arucotag_drone *drone, const arucotag_pose *pose,
-             const genom_context self)
+predict_main(float length, const arucotag_calib *calib,
+             arucotag_predictor **pred, const arucotag_drone *drone,
+             const arucotag_pose *pose, const genom_context self)
 {
     // 1- Get control
     Mat control, W_t_B, W_R_B;
@@ -203,9 +203,54 @@ predict_main(const arucotag_calib *calib, arucotag_predictor **pred,
             // 2- Predict with controls
             (*pred)->filters[i].state = (*pred)->filters[i].kf.predict(control);
 
-            // 3- Correct
-            if (j != v->end())
-                (*pred)->filters[i].state = (*pred)->filters[i].kf.correct((*pred)->meas[j - v->begin()]);
+            // 3- Correct if new measurement
+            if (j != v->end()) {
+                // 3.1- Compute measurement covariance
+                // read transformation from camera to marker
+                Mat C_t_M = (*pred)->meas[j - v->begin()](Rect(0,0,1,3));
+                Mat C_Rod_M = (*pred)->meas[j - v->begin()](Rect(0,3,1,3));
+                Mat C_R_M = Mat::zeros(3,3, CV_32F);
+                Rodrigues(C_Rod_M, C_R_M);
+
+                // arbitrary isotropic pixel error
+                float sigma_p = 3;
+
+                Mat J = Mat::zeros(8,3, CV_32F);
+                Mat c = (Mat_<float>(3,4) <<
+                    -1,  1,  1, -1,
+                    -1, -1,  1,  1,
+                     0,  0,  0,  0
+                );
+                c = c * length/2;
+                for (uint16_t i=0; i<4; i++)
+                {
+                    Mat ci = c.col(i);
+                    Mat hi = calib->K*(C_R_M*ci + C_t_M);
+                    // jacobian of pixellization (eucl->homogeneous) operation wrt euclidean coordinates
+                    Mat J_pix = (Mat_<float>(2,3) <<
+                        1/hi.at<float>(2), 0, -hi.at<float>(0)/hi.at<float>(2)/hi.at<float>(2),
+                        0, 1/hi.at<float>(2), -hi.at<float>(1)/hi.at<float>(2)/hi.at<float>(2)
+                    );
+                    // jacobian of projection
+                    Mat J_proj = Mat::zeros(3,6, CV_32F);
+                    // jacobian of projection wrt translation
+                    calib->K.copyTo(J_proj(Rect(0,0,3,3)));
+                    // jacobian of projection wrt rotation
+                    Mat skew = (Mat_<float>(3,3) <<
+                                      0, -ci.at<float>(2),  ci.at<float>(1),
+                        ci.at<float>(2),                0, -ci.at<float>(0),
+                       -ci.at<float>(1),  ci.at<float>(0),                0
+                    );
+                    J_proj(Rect(3,0,3,3)) = -calib->K * C_R_M * skew;
+                    // jacobian of projection wrt euclidean coordinates (chain rule)
+                    Mat J_full = J_pix*J_proj;
+                    J_full(Rect(0,0,3,2)).copyTo(J(Rect(0,i*2,3,2)));
+                }
+                (*pred)->filters[i].kf.measurementNoiseCov = sigma_p*sigma_p * (J.t() * J).inv();
+                cout << (*pred)->filters[i].kf.measurementNoiseCov << endl;
+                // 3.2- Correct
+                (*pred)->filters[i].state = (*pred)->filters[i].kf.correct(C_t_M);
+            }
 
             // 4- Update
             // (*pred)->filters[i].state is updated to statePre if no measurement, statePost if there is

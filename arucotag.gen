@@ -105,7 +105,7 @@ component arucotag {
         codel<wait> predict_wait(in extrinsics, out calib, out pred)
             yield pause::wait, main;
 
-        codel<main> predict_main(in calib, inout pred, in drone, out pose)
+        codel<main> predict_main(in length, in calib, inout pred, in drone, out pose)
             yield pause::main, log;
 
         codel<log> predict_log(in pred, inout log)

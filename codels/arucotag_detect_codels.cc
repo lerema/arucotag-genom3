@@ -136,10 +136,13 @@ detect_main(const arucotag_frame *frame, float length,
             if (j >= ports->_length) continue;
 
             (*tags)->valid_ids.push_back(ids[i]);
-            (*tags)->meas.push_back((Mat_<float>(3,1) <<
+            (*tags)->meas.push_back((Mat_<float>(6,1) <<
                 translations[i][0],
                 translations[i][1],
-                translations[i][2]
+                translations[i][2],
+                rotations[i][0],
+                rotations[i][1],
+                rotations[i][2]
             ));
         }
 
