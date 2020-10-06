@@ -283,7 +283,9 @@ predict_main(bool reset, float length, const arucotag_calib *calib,
             // (*pred)->filters[i].state is updated to statePre if no measurement, statePost if there is
             // idem for covariances but they are not published ATM
         }
+
         // 5- Publish
+        if ((*pred)->filters[i].state.empty()) continue;
         Mat W_r = W_R_B * (calib->B_R_C * (*pred)->filters[i].state + calib->B_t_C) + W_t_B;
         pose->data(to_string((*pred)->filters[i].id).c_str(), self)->pos._value =
         {
