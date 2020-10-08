@@ -121,14 +121,14 @@ predict_main(bool reset, float length, const arucotag_calib *calib,
     if (reset) return arucotag_pause_wait;
 
     // 1- Get control
-    Mat control, control_cov, W_t_B, W_R_B;
+    Mat control, process_cov, W_t_B, W_R_B;
     bool nostate = !(drone->read(self) == genom_ok && drone->data(self));
     if (nostate)
     {
         control = Mat::zeros(6, 1, CV_32F);
         W_R_B = Mat::zeros(3, 3, CV_32F);
         W_t_B = Mat::zeros(3, 1, CV_32F);
-        setIdentity(control_cov, Scalar::all(1e-3));
+        setIdentity(process_cov, Scalar::all(1e-3));
     }
     else
     {
@@ -184,7 +184,7 @@ predict_main(bool reset, float length, const arucotag_calib *calib,
             wc[1], wc[2], wc[2],
             wc[3], wc[4], wc[5]
         );
-        control_cov = Q_v+Q_w;
+        process_cov = Q_v + Q_w;
     }
 
     for (uint16_t i=0; i<(*pred)->filters.size(); i++)
@@ -226,7 +226,7 @@ predict_main(bool reset, float length, const arucotag_calib *calib,
             }
 
             // 2- Predict with controls
-            (*pred)->filters[i].kf.processNoiseCov = control_cov;
+            (*pred)->filters[i].kf.processNoiseCov = process_cov;
             (*pred)->filters[i].state = (*pred)->filters[i].kf.predict(control);
 
             // 3- Correct if new measurement

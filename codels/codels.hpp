@@ -63,6 +63,15 @@ struct kalmanfilter {
     {
         id = i;
         kf.init(3, 3, 6, CV_32F);
+        setIdentity(kf.measurementMatrix);
+        setIdentity(kf.transitionMatrix);
+        setIdentity(kf.measurementNoiseCov);
+        setIdentity(kf.processNoiseCov);
+        setIdentity(kf.controlMatrix);
+        setIdentity(kf.errorCovPre);
+        setIdentity(kf.errorCovPost);
+        setIdentity(kf.gain);
+
     }
 };
 
