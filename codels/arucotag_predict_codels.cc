@@ -76,9 +76,10 @@ predict_wait(const arucotag_extrinsics *extrinsics,
         );
 
         Mat C_R_B = (*calib)->B_R_C.t();
-        double tx = extrinsics->data(self)->trans.tx;
-        double ty = extrinsics->data(self)->trans.ty;
-        double tz = extrinsics->data(self)->trans.tz;
+        Mat C_t_B = - C_R_B * (*calib)->B_t_C;
+        double tx = C_t_B.at<float>(0);
+        double ty = C_t_B.at<float>(1);
+        double tz = C_t_B.at<float>(2);
         Mat C_t_B_skew = (Mat_<float>(3,3) <<
             0, -tz,  ty,
            tz,   0, -tx,
@@ -88,9 +89,9 @@ predict_wait(const arucotag_extrinsics *extrinsics,
         // Fixed transformation matrix from drone to camera
         // (t is translation from drone to camera)
         // (r is rotation from drone to camera)
-        // [ r11 r12 r13   0   tz -ty ]  [ vx ]
-        // [ r21 r22 r23  -tz   0  tx ]  [ vy ]
-        // [ r31 r32 r33   ty -tx   0 ]  [ vz ]
+        // [ r11 r12 r13   0  -tz  ty ]  [ vx ]
+        // [ r21 r22 r23   tz   0 -tx ]  [ vy ]
+        // [ r31 r32 r33  -ty  tx   0 ]  [ vz ]
         // [   0   0   0  r11 r12 r13 ]  [ wx ]
         // [   0   0   0  r21 r22 r23 ]  [ wy ]
         // [   0   0   0  r31 r32 r33 ]  [ wz ]
