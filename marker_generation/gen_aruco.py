@@ -85,13 +85,14 @@ except KeyError:
     exit()
 
 marker = aruco.drawMarker(dict, args.index, 700)
-marker   = cv2.copyMakeBorder(marker, 50, 50, 50, 50, cv2.BORDER_CONSTANT, value=[255, 255, 255])
 
 markername = args.aruco_dict.replace("DICT", "aruco") + "_" + str(args.index)
 
 if not args.gazebo:
     cv2.imwrite(markername + ".png", marker)
 else:
+    marker = cv2.copyMakeBorder(marker, 100, 100, 100, 100, cv2.BORDER_CONSTANT, value=[255, 255, 255])
+
     path = join(args.path, markername)
     if exists(path):
         rmtree(path)
@@ -112,7 +113,7 @@ else:
     with open(join(path, "model.sdf"), "w") as f:
         f.write(
             sdf_template.replace("TEMPLATE_MARKER", markername).replace(
-                "TEMPLATE_LENGTH", str(args.length*800/700)
+                "TEMPLATE_LENGTH", str(args.length*900/700)
             )
         )
 
