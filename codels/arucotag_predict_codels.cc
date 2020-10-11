@@ -143,6 +143,7 @@ predict_main(bool reset, float length, const arucotag_calib *calib,
         );
 
         // 1.1- Transformation from world to drone to camera
+        // Create transformation from world to drone first
         // (t is translation from world to drone)
         // (r is rotation from world to drone)
         // [ r11 r12 r13  0   0   0 ]  [ vx ]
@@ -254,7 +255,7 @@ predict_main(bool reset, float length, const arucotag_calib *calib,
                 {
                     Mat ci = c.col(i);
                     Mat hi = calib->K*(C_R_M*ci + C_t_M);
-                    // jacobian of pixellization (eucl->homogeneous) operation wrt euclidean coordinates
+                    // jacobian of pixellization (homogeneous->pixel) operation wrt homogeneous coordinates
                     Mat J_pix = (Mat_<float>(2,3) <<
                         1/hi.at<float>(2), 0, -hi.at<float>(0)/hi.at<float>(2)/hi.at<float>(2),
                         0, 1/hi.at<float>(2), -hi.at<float>(1)/hi.at<float>(2)/hi.at<float>(2)
