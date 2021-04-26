@@ -66,10 +66,8 @@ component arucotag {
         float length;
         calib calib;
         detector tags;
-        predictor pred;
 
         sequence<portinfo> ports;
-        boolean reset;
 
         log_s log;
     };
@@ -84,43 +82,20 @@ component arucotag {
         codel<start> detect_start(out ::ids)
             yield wait;
 
-        codel<wait> detect_wait(in length, in intrinsics, in frame, out calib)
+        codel<wait> detect_wait(in length, in intrinsics, in extrinsics, in frame, out calib)
             yield pause::wait, main;
 
-        codel<main> detect_main(in frame, in length, in calib, out tags, in ports)
-            yield pause::main, valid;
-
-        codel<valid> detect_valid(in tags, out pred)
-            yield log;
+        codel<main> detect_main(in frame, in length, in calib, in drone, out tags, in ports, out pose)
+            yield pause::main, log;
 
         codel<log> detect_log(in tags, inout log)
             yield pause::main;
     };
 
-    task predict {
-        period predict_period ms;
-
-        codel<start> predict_start()
-            yield wait;
-
-        codel<wait> predict_wait(in extrinsics, out calib, out pred, inout reset)
-            yield pause::wait, main;
-
-        codel<main> predict_main(in reset, in length, in calib, inout pred, in drone, out pose)
-            yield pause::wait, pause::main, log;
-
-        codel<log> predict_log(in pred, inout log)
-            yield pause::main;
-    };
-
     activity add_marker(in string<16> marker = : "Marker name") {
         task detect;
-        codel<start> add_marker(in marker, out pred, out ports, out pose)
+        codel<start> add_marker(in marker, out ports, out pose)
             yield ether;
-    };
-
-    function reset() {
-        codel reset(in ports, out pred, out reset);
     };
 
     /* ---- Getters/Setters ----------------------------------------------- */

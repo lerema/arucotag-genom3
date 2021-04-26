@@ -43,10 +43,8 @@ detect_start(arucotag_ids *ids, const genom_context self)
 {
     // Init IDS fields
     ids->length = 0;
-    ids->reset = false;
     ids->calib = new arucotag_calib();
     ids->tags = new arucotag_detector();
-    ids->pred = new arucotag_predictor();
     ids->log = new arucotag_log_s();
 
     return arucotag_wait;
@@ -60,14 +58,17 @@ detect_start(arucotag_ids *ids, const genom_context self)
  */
 genom_event
 detect_wait(float length, const arucotag_intrinsics *intrinsics,
+            const arucotag_extrinsics *extrinsics,
             const arucotag_frame *frame, arucotag_calib **calib,
             const genom_context self)
 {
     if (intrinsics->read(self) == genom_ok && intrinsics->data(self) &&
+        extrinsics->read(self) == genom_ok && extrinsics->data(self) &&
         frame->read(self) == genom_ok && frame->data(self) &&
         frame->data(self)->pixels._length > 0 &&
         length > 0)
     {
+        // Init intr
         or_sensor_calibration* c = &(intrinsics->data(self)->calib);
         (*calib)->K = (Mat_<float>(3,3) <<
             c->fx, c->gamma, c->cx,
@@ -81,25 +82,38 @@ detect_wait(float length, const arucotag_intrinsics *intrinsics,
             intrinsics->data(self)->disto.p1,
             intrinsics->data(self)->disto.p2
         );
+        // Init extr
+        (*calib)->B_t_C = (Mat_<float>(3,1) <<
+            extrinsics->data(self)->trans.tx,
+            extrinsics->data(self)->trans.ty,
+            extrinsics->data(self)->trans.tz
+        );
+        float r = extrinsics->data(self)->rot.roll;
+        float p = extrinsics->data(self)->rot.pitch;
+        float y = extrinsics->data(self)->rot.yaw;
+        (*calib)->B_R_C = (Mat_<float>(3,3) <<
+            cos(p)*cos(y), sin(r)*sin(p)*cos(y) - cos(r)*sin(y), cos(r)*sin(p)*cos(y) + sin(r)*sin(y),
+            cos(p)*sin(y), sin(r)*sin(p)*sin(y) + cos(r)*cos(y), cos(r)*sin(p)*sin(y) - sin(r)*cos(y),
+                  -sin(p),                        sin(r)*cos(p),                        cos(r)*cos(p)
+        );
+
         return arucotag_main;
     }
-    else
-    {
-        return arucotag_pause_wait;
-    }
+    return arucotag_pause_wait;
 }
 
 
 /** Codel detect_main of task detect.
  *
  * Triggered by arucotag_main.
- * Yields to arucotag_pause_main, arucotag_valid.
+ * Yields to arucotag_pause_main, arucotag_log.
  */
 genom_event
 detect_main(const arucotag_frame *frame, float length,
-            const arucotag_calib *calib, arucotag_detector **tags,
+            const arucotag_calib *calib, const arucotag_drone *drone,
+            arucotag_detector **tags,
             const sequence_arucotag_portinfo *ports,
-            const genom_context self)
+            const arucotag_pose *pose, const genom_context self)
 {
     // Sleep if no marker is tracked
     if (!ports->_length) return arucotag_pause_main;
@@ -120,55 +134,149 @@ detect_main(const arucotag_frame *frame, float length,
     vector<vector<Point2f>> corners;
     aruco::detectMarkers(cvframe, (*tags)->dict, corners, ids);
 
+    if (ids.size() == 0)
+        return arucotag_pause_main;
+
     // Estimate pose from corners
-    if (ids.size() > 0)
+    vector<Vec3d> translations, rotations;
+    aruco::estimatePoseSingleMarkers(corners, length, calib->K, calib->D, rotations, translations);
+
+    // Get state feedback
+    Mat W_t_B, W_R_B;
+    if (!(drone->read(self) == genom_ok && drone->data(self)))
     {
-        vector<Vec3d> translations, rotations;
-        aruco::estimatePoseSingleMarkers(corners, length, calib->K, calib->D, rotations, translations);
+        W_R_B = Mat::zeros(3, 3, CV_32F);
+        W_t_B = Mat::zeros(3, 1, CV_32F);
+    }
+    else
+    {
+        W_t_B = (Mat_<float>(3,1) <<
+            drone->data(self)->pos._value.x,
+            drone->data(self)->pos._value.y,
+            drone->data(self)->pos._value.z
+        );
+        double qw = drone->data(self)->att._value.qw;
+        double qx = drone->data(self)->att._value.qx;
+        double qy = drone->data(self)->att._value.qy;
+        double qz = drone->data(self)->att._value.qz;
+        W_R_B = (Mat_<float>(3,3) <<
+            1 - 2*qy*qy - 2*qz*qz,     2*qx*qy - 2*qz*qw,     2*qx*qz + 2*qy*qw,
+                2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz,     2*qy*qz - 2*qx*qw,
+                2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy
+        );
+    }
 
-        (*tags)->valid_ids.clear();
-        (*tags)->meas.clear();
+    (*tags)->valid_ids.clear();
+    (*tags)->meas.clear();
+
+    for (uint16_t i=0; i<ids.size(); i++)
+    {
         // Check that detected tags are among tracked markers
-        for (uint16_t i=0; i<ids.size(); i++)
-        {
-            const char* id = to_string(ids[i]).c_str();
-            uint16_t j = 0;
-            for (j=0; j<ports->_length; j++)
-                if (!strcmp(ports->_buffer[j], id))
-                    break;
-            if (j >= ports->_length) continue;
+        const char* id = to_string(ids[i]).c_str();
+        uint16_t j = 0;
+        for (j=0; j<ports->_length; j++)
+            if (!strcmp(ports->_buffer[j], id))
+                break;
+        if (j >= ports->_length) continue;
 
-            (*tags)->valid_ids.push_back(ids[i]);
-            (*tags)->meas.push_back((Mat_<float>(6,1) <<
-                translations[i][0],
-                translations[i][1],
-                translations[i][2],
-                rotations[i][0],
-                rotations[i][1],
-                rotations[i][2]
-            ));
+        // Transform to world frame
+        Mat C_t_M = (Mat_<float>(6,1) << translations[i][0], translations[i][1], translations[i][2]);
+        Mat W_t_M = W_R_B * (calib->B_R_C * C_t_M + calib->B_t_C) + W_t_B;
+        Mat C_R_M = Mat::zeros(3,3, CV_32F);
+        Rodrigues(rotations[i], C_R_M);
+        Mat W_R_M = W_R_B * calib->B_R_C * C_R_M;
+
+        // Compute covariance
+        // arbitrary isotropic pixel error
+        float sigma_p = 3;
+
+        Mat J_pos = Mat::zeros(8,3, CV_32F);
+        Mat c = (Mat_<float>(3,4) <<
+            -1,  1,  1, -1,
+            -1, -1,  1,  1,
+             0,  0,  0,  0
+        );
+        c = c * length/2;
+        for (uint16_t i=0; i<4; i++)
+        {
+            Mat ci = c.col(i);
+            Mat hi = calib->K*(C_R_M*ci + C_t_M);
+            // jacobian of pixellization (homogeneous->pixel) operation wrt homogeneous coordinates
+            Mat J_pix = (Mat_<float>(2,3) <<
+                1/hi.at<float>(2), 0, -hi.at<float>(0)/hi.at<float>(2)/hi.at<float>(2),
+                0, 1/hi.at<float>(2), -hi.at<float>(1)/hi.at<float>(2)/hi.at<float>(2)
+            );
+            // jacobian of projection
+            Mat J_proj = Mat::zeros(3,6, CV_32F);
+            // jacobian of projection wrt translation
+            calib->K.copyTo(J_proj(Rect(0,0,3,3)));
+            // jacobian of projection wrt rotation
+            Mat skew = (Mat_<float>(3,3) <<
+                              0, -ci.at<float>(2),  ci.at<float>(1),
+                ci.at<float>(2),                0, -ci.at<float>(0),
+               -ci.at<float>(1),  ci.at<float>(0),                0
+            );
+            J_proj(Rect(3,0,3,3)) = -calib->K * C_R_M * skew;
+            // jacobian of projection wrt euclidean coordinates (chain rule)
+            Mat J_full = J_pix*J_proj;
+            J_full(Rect(0,0,3,2)).copyTo(J_pos(Rect(0,i*2,3,2)));
         }
 
-        if ((*tags)->valid_ids.size())
-            return arucotag_valid;
+        // 3.2- Correct
+        Mat cov_pos = sigma_p*sigma_p * (J_pos.t() * J_pos).inv();
+
+        // Save for logs
+        (*tags)->valid_ids.push_back(ids[i]);
+        (*tags)->meas.push_back((Mat_<float>(6,1) <<
+            W_t_M.at<float>(0),
+            W_t_M.at<float>(1),
+            W_t_M.at<float>(2),
+            rotations[i][0],
+            rotations[i][1],
+            rotations[i][2]
+        ));
+
+        // Publish
+        pose->data(to_string(ids[i]).c_str(), self)->pos._value =
+        {
+            W_t_M.at<float>(0),
+            W_t_M.at<float>(1),
+            W_t_M.at<float>(2)
+        };
+        pose->data(to_string(ids[i]).c_str(), self)->pos_cov._value =
+        {
+            cov_pos.at<float>(0,0),
+            cov_pos.at<float>(1,0),
+            cov_pos.at<float>(1,1),
+            cov_pos.at<float>(2,0),
+            cov_pos.at<float>(2,1),
+            cov_pos.at<float>(2,2)
+        };
+
+        timeval tv;
+        gettimeofday(&tv, NULL);
+        pose->data(to_string(ids[i]).c_str(), self)->ts.sec = tv.tv_sec;
+        pose->data(to_string(ids[i]).c_str(), self)->ts.nsec = tv.tv_usec*1000;
+        pose->write(to_string(ids[i]).c_str(), self);
     }
-    return arucotag_pause_main;
+
+    if ((*tags)->valid_ids.size())
+        return arucotag_log;
+
 }
 
 
-/** Codel detect_valid of task detect.
+/** Codel detect_publish of task detect.
  *
- * Triggered by arucotag_valid.
+ * Triggered by arucotag_publish.
  * Yields to arucotag_log.
  */
 genom_event
-detect_valid(const arucotag_detector *tags, arucotag_predictor **pred,
-             const genom_context self)
+detect_publish(const arucotag_detector *tags,
+               const arucotag_pose *pose, const genom_context self)
 {
-    (*pred)->meas = tags->meas;
-    (*pred)->new_detections = tags->valid_ids;
-
-    return arucotag_log;
+  /* skeleton sample: insert your code */
+  /* skeleton sample */ return arucotag_log;
 }
 
 
@@ -220,7 +328,6 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
                     (*log)->skipped ? "\n" : "",
                     tv.tv_sec, tv.tv_usec*1000,
                     tags->valid_ids[i],
-                    0,
                     tags->meas[i].at<float>(0),
                     tags->meas[i].at<float>(1),
                     tags->meas[i].at<float>(2)
@@ -251,8 +358,7 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
  * Yields to arucotag_ether.
  */
 genom_event
-add_marker(const char marker[16], arucotag_predictor **pred,
-           sequence_arucotag_portinfo *ports,
+add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
            const arucotag_pose *pose, const genom_context self)
 {
     // Add new marker in port list
@@ -265,15 +371,14 @@ add_marker(const char marker[16], arucotag_predictor **pred,
             return arucotag_e_sys_error("add", self);
     (ports->_length)++;
     strncpy(ports->_buffer[i], marker, 16);
-    (*pred)->add(std::stoi(marker));
 
     // Init new out port
     pose->open(marker, self);
 
     pose->data(marker, self)->pos._present = true;
     pose->data(marker, self)->pos_cov._present = true;
-    pose->data(marker, self)->att._present = false;
-    pose->data(marker, self)->vel._present = false;
+    pose->data(marker, self)->att._present = true;
+    pose->data(marker, self)->vel._present = true;
     pose->data(marker, self)->avel._present = false;
     pose->data(marker, self)->acc._present = false;
     pose->data(marker, self)->aacc._present = false;

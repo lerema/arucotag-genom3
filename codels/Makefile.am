@@ -26,7 +26,6 @@ lib_LTLIBRARIES = libarucotag_codels.la
 libarucotag_codels_la_SOURCES  =	arucotag_c_types.h
 libarucotag_codels_la_SOURCES +=	arucotag_codels.cc
 libarucotag_codels_la_SOURCES +=	arucotag_detect_codels.cc
-libarucotag_codels_la_SOURCES +=	arucotag_predict_codels.cc
 
 libarucotag_codels_la_CPPFLAGS =	$(requires_CFLAGS)
 libarucotag_codels_la_LIBADD   =	$(requires_LIBS)

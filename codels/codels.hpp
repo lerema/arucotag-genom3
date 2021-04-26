@@ -48,41 +48,13 @@ struct  arucotag_calib {
     Mat B_t_C = Mat::zeros(Size(1,3), CV_32F);
 };
 
+
 struct arucotag_detector {
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250);
     vector<int> valid_ids;
     vector<Mat> meas;
 };
 
-struct kalmanfilter {
-    KalmanFilter kf;
-    uint16_t id;
-    Mat state;
-
-    kalmanfilter(uint16_t i)
-    {
-        id = i;
-        kf.init(3, 3, 6, CV_32F);
-        setIdentity(kf.measurementMatrix);
-        setIdentity(kf.transitionMatrix);
-        setIdentity(kf.measurementNoiseCov);
-        setIdentity(kf.processNoiseCov);
-        setIdentity(kf.controlMatrix);
-        setIdentity(kf.errorCovPre);
-        setIdentity(kf.errorCovPost);
-        setIdentity(kf.gain);
-
-    }
-};
-
-struct arucotag_predictor {
-    vector<int> new_detections;
-    vector<Mat> meas;
-    vector<kalmanfilter> filters;
-    Mat C_T_B = Mat::eye(6, 6, CV_32F);
-
-    void add(uint16_t i) { filters.push_back(kalmanfilter(i)); }
-};
 
 struct arucotag_log_s {
     aiocb req;
@@ -96,11 +68,12 @@ struct arucotag_log_s {
     }
     # define arucotag_logfmt	"%g "
     # define arucotag_log_header                                            \
-        "ts i mode x y z "
+        "ts i x y z "
     # define arucotag_log_fmt                                               \
-        "%ld.%09ld %i %i "                                                  \
+        "%ld.%09ld %i "                                                  \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt
 };
+
 
 static inline genom_event
 arucotag_e_sys_error(const char *s, genom_context self)
