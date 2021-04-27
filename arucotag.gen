@@ -40,13 +40,11 @@ component arucotag {
     uses    or_camera;
 
     /* ---- Exceptions ---------------------------------------------------- */
-    exception e_mem { string<128> what; };
     exception e_sys { short code; string<128> what; };
 
     /* ---- Types --------------------------------------------------------- */
     native calib;
     native detector;
-    native predictor;
 
     native log_s;
 
@@ -72,12 +70,9 @@ component arucotag {
         log_s log;
     };
 
-    const unsigned short detect_period = 50;
-    const unsigned short predict_period = 5;
-
     /* ---- Main task ----------------------------------------------------- */
     task detect {
-        period detect_period ms;
+        period 30 ms;
 
         codel<start> detect_start(out ::ids)
             yield wait;

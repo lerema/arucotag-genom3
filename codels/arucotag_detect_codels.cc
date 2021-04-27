@@ -222,7 +222,6 @@ detect_main(const arucotag_frame *frame, float length,
             J_full(Rect(0,0,3,2)).copyTo(J_pos(Rect(0,i*2,3,2)));
         }
 
-        // 3.2- Correct
         Mat cov_pos = sigma_p*sigma_p * (J_pos.t() * J_pos).inv();
 
         // Save for logs
