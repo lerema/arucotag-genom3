@@ -265,20 +265,6 @@ detect_main(const arucotag_frame *frame, float length,
 }
 
 
-/** Codel detect_publish of task detect.
- *
- * Triggered by arucotag_publish.
- * Yields to arucotag_log.
- */
-genom_event
-detect_publish(const arucotag_detector *tags,
-               const arucotag_pose *pose, const genom_context self)
-{
-  /* skeleton sample: insert your code */
-  /* skeleton sample */ return arucotag_log;
-}
-
-
 /** Codel detect_log of task detect.
  *
  * Triggered by arucotag_log.
