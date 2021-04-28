@@ -75,7 +75,7 @@ detect_wait(float length, const arucotag_intrinsics *intrinsics,
                 0,    c->fy, c->cy,
                 0,        0,     1
         );
-        (*calib)->D = (Mat_<float>(4,1) <<
+        (*calib)->D = (Mat_<float>(5,1) <<
             intrinsics->data(self)->disto.k1,
             intrinsics->data(self)->disto.k2,
             intrinsics->data(self)->disto.k3,
@@ -180,10 +180,11 @@ detect_main(const arucotag_frame *frame, float length,
         if (j >= ports->_length) continue;
 
         // Transform to world frame
-        Mat C_t_M = (Mat_<float>(6,1) << translations[i][0], translations[i][1], translations[i][2]);
+        Mat C_t_M = (Mat_<float>(3,1) << translations[i][0], translations[i][1], translations[i][2]);
         Mat W_t_M = W_R_B * (calib->B_R_C * C_t_M + calib->B_t_C) + W_t_B;
         Mat C_R_M = Mat::zeros(3,3, CV_32F);
         Rodrigues(rotations[i], C_R_M);
+        C_R_M.convertTo(C_R_M, CV_32F);
         Mat W_R_M = W_R_B * calib->B_R_C * C_R_M;
 
         // Compute covariance
@@ -261,7 +262,7 @@ detect_main(const arucotag_frame *frame, float length,
 
     if ((*tags)->valid_ids.size())
         return arucotag_log;
-
+    return arucotag_pause_main;
 }
 
 
