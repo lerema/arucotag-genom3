@@ -363,11 +363,8 @@ add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
 
     pose->data(marker, self)->pos._present = true;
     pose->data(marker, self)->pos_cov._present = true;
-    pose->data(marker, self)->att._present = true;
-    pose->data(marker, self)->vel._present = true;
-    pose->data(marker, self)->avel._present = false;
-    pose->data(marker, self)->acc._present = false;
-    pose->data(marker, self)->aacc._present = false;
+    pose->data(marker, self)->att._present = false;
+    pose->data(marker, self)->att_cov._present = false;
 
     warnx("tracking new marker: %s", marker);
     return arucotag_ether;
