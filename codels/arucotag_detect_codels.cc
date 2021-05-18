@@ -225,15 +225,56 @@ detect_main(const arucotag_frame *frame, float length,
 
         Mat cov_pos = sigma_p*sigma_p * (J_pos.t() * J_pos).inv();
 
+        // Convert rotation
+        float t;
+        Mat q;
+        if (W_R_M.at<float>(2,2) < 0)
+        {
+            if (W_R_M.at<float>(0,0) > W_R_M.at<float>(1,1))
+            {
+                t = 1 + W_R_M.at<float>(0,0) - W_R_M.at<float>(1,1) - W_R_M.at<float>(2,2);
+                q = (Mat_<float>(4,1) << t, W_R_M.at<float>(0,1)+W_R_M.at<float>(1,0), W_R_M.at<float>(2,0)+W_R_M.at<float>(0,2), W_R_M.at<float>(1,2)-W_R_M.at<float>(2,1) );
+            }
+            else
+            {
+                t = 1 - W_R_M.at<float>(0,0) + W_R_M.at<float>(1,1) - W_R_M.at<float>(2,2);
+                q = (Mat_<float>(4,1) << W_R_M.at<float>(0,1)+W_R_M.at<float>(1,0), t, W_R_M.at<float>(1,2)+W_R_M.at<float>(2,1), W_R_M.at<float>(2,0)-W_R_M.at<float>(0,2) );
+            }
+        }
+        else
+        {
+            if (W_R_M.at<float>(0,0) < -W_R_M.at<float>(1,1))
+            {
+                t = 1 - W_R_M.at<float>(0,0) - W_R_M.at<float>(1,1) + W_R_M.at<float>(2,2);
+                q = (Mat_<float>(4,1) << W_R_M.at<float>(2,0)+W_R_M.at<float>(0,2), W_R_M.at<float>(1,2)+W_R_M.at<float>(2,1), t, W_R_M.at<float>(0,1)-W_R_M.at<float>(1,0) );
+            }
+            else
+            {
+                t = 1 + W_R_M.at<float>(0,0) + W_R_M.at<float>(1,1) + W_R_M.at<float>(2,2);
+                q = (Mat_<float>(4,1) << W_R_M.at<float>(1,2)-W_R_M.at<float>(2,1), W_R_M.at<float>(2,0)-W_R_M.at<float>(0,2), W_R_M.at<float>(0,1)-W_R_M.at<float>(1,0), t );
+            }
+        }
+        q *= 0.5 / sqrt(t);
+        float& qw = q.at<float>(3);
+        float& qx = q.at<float>(0);
+        float& qy = q.at<float>(1);
+        float& qz = q.at<float>(2);
+
+        Mat rpy = (Mat_<float>(3,1) <<
+            atan2(2 * (qw*qx + qy*qz), 1 - 2 * (qx*qx + qy*qy)),
+            asin(2 * (qw*qy - qz*qx)),
+            atan2(2 * (qw*qz + qx*qy), 1 - 2 * (qy*qy + qz*qz))
+        );
+
         // Save for logs
         (*tags)->valid_ids.push_back(ids[i]);
         (*tags)->meas.push_back((Mat_<float>(6,1) <<
             W_t_M.at<float>(0),
             W_t_M.at<float>(1),
             W_t_M.at<float>(2),
-            rotations[i][0],
-            rotations[i][1],
-            rotations[i][2]
+            rpy.at<float>(0),
+            rpy.at<float>(1),
+            rpy.at<float>(2)
         ));
 
         // Publish
@@ -251,6 +292,13 @@ detect_main(const arucotag_frame *frame, float length,
             cov_pos.at<float>(2,0),
             cov_pos.at<float>(2,1),
             cov_pos.at<float>(2,2)
+        };
+        pose->data(to_string(ids[i]).c_str(), self)->att._value =
+        {
+            q.at<float>(3),
+            q.at<float>(0),
+            q.at<float>(1),
+            q.at<float>(2)
         };
 
         timeval tv;
@@ -316,7 +364,10 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
                     tags->valid_ids[i],
                     tags->meas[i].at<float>(0),
                     tags->meas[i].at<float>(1),
-                    tags->meas[i].at<float>(2)
+                    tags->meas[i].at<float>(2),
+                    tags->meas[i].at<float>(3),
+                    tags->meas[i].at<float>(4),
+                    tags->meas[i].at<float>(5)
                 );
                 if (i==0) strcpy((*log)->buffer, buffer);
                 else      strcat((*log)->buffer, buffer);
@@ -363,7 +414,7 @@ add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
 
     pose->data(marker, self)->pos._present = true;
     pose->data(marker, self)->pos_cov._present = true;
-    pose->data(marker, self)->att._present = false;
+    pose->data(marker, self)->att._present = true;
     pose->data(marker, self)->att_cov._present = false;
 
     warnx("tracking new marker: %s", marker);
