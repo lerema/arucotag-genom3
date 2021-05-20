@@ -68,9 +68,10 @@ struct arucotag_log_s {
     }
     # define arucotag_logfmt	"%g "
     # define arucotag_log_header                                            \
-        "ts i x y z roll pitch yaw "
+        "ts i px py x y z roll pitch yaw "
     # define arucotag_log_fmt                                               \
         "%ld.%09ld %i "                                                     \
+        arucotag_logfmt arucotag_logfmt                                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt
 };

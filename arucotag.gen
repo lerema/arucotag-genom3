@@ -27,6 +27,7 @@
 
 #include "or/pose/pose_estimator.gen"
 #include "or/sensor/camera.gen"
+#include "or/sensor/pixel.idl"
 
 /* ---- Component declaration --------------------------------------------- */
 component arucotag {
@@ -52,6 +53,7 @@ component arucotag {
 
     /* ---- Ports --------------------------------------------------------- */
     port multiple out or_pose_estimator::state pose;
+    port multiple out or::sensor::pixel pixel_pose;
     port in or_pose_estimator::state drone;
     /* interfaces ports:
      *  port in   or::sensor::frame         frame;
@@ -80,7 +82,7 @@ component arucotag {
         codel<wait> detect_wait(in length, in intrinsics, in extrinsics, in frame, out calib)
             yield pause::wait, main;
 
-        codel<main> detect_main(in frame, in length, in calib, in drone, out tags, in ports, out pose)
+        codel<main> detect_main(in frame, in length, in calib, in drone, out tags, in ports, out pose, out pixel_pose)
             yield pause::main, log;
 
         codel<log> detect_log(in tags, inout log)
@@ -89,7 +91,7 @@ component arucotag {
 
     activity add_marker(in string<16> marker = : "Marker name") {
         task detect;
-        codel<start> add_marker(in marker, out ports, out pose)
+        codel<start> add_marker(in marker, out ports, out pose, out pixel_pose)
             yield ether;
     };
 

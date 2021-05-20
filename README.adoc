@@ -173,6 +173,25 @@ a|.Data structure
 
 '''
 
+[[pixel_pose]]
+=== pixel_pose (multiple out)
+
+
+[role="small", width="50%", float="right", cols="1"]
+|===
+a|.Data structure
+[disc]
+ * `struct ::or::sensor::pixel` `pixel_pose`
+ ** `struct ::or::time::ts` `ts`
+ *** `long` `sec`
+ *** `long` `nsec`
+ ** `unsigned short` `x`
+ ** `unsigned short` `y`
+
+|===
+
+'''
+
 [[drone]]
 === drone (in)
 
@@ -246,6 +265,7 @@ a|.Context
   * In task `<<detect>>`
   (frequency 33.333333333333336 _Hz_)
   * Updates port `<<pose>>`
+  * Updates port `<<pixel_pose>>`
 |===
 
 '''
@@ -319,6 +339,7 @@ a|.Context
 * Reads port `<<intrinsics>>`
 * Reads port `<<extrinsics>>`
 * Updates port `<<pose>>`
+* Updates port `<<pixel_pose>>`
 * Reads port `<<drone>>`
 |===
 

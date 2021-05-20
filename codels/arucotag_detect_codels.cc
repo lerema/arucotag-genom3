@@ -113,7 +113,9 @@ detect_main(const arucotag_frame *frame, float length,
             const arucotag_calib *calib, const arucotag_drone *drone,
             arucotag_detector **tags,
             const sequence_arucotag_portinfo *ports,
-            const arucotag_pose *pose, const genom_context self)
+            const arucotag_pose *pose,
+            const arucotag_pixel_pose *pixel_pose,
+            const genom_context self)
 {
     // Sleep if no marker is tracked
     if (!ports->_length) return arucotag_pause_main;
@@ -266,17 +268,6 @@ detect_main(const arucotag_frame *frame, float length,
             atan2(2 * (qw*qz + qx*qy), 1 - 2 * (qy*qy + qz*qz))
         );
 
-        // Save for logs
-        (*tags)->valid_ids.push_back(ids[i]);
-        (*tags)->meas.push_back((Mat_<float>(6,1) <<
-            W_t_M.at<float>(0),
-            W_t_M.at<float>(1),
-            W_t_M.at<float>(2),
-            rpy.at<float>(0),
-            rpy.at<float>(1),
-            rpy.at<float>(2)
-        ));
-
         // Publish
         pose->data(to_string(ids[i]).c_str(), self)->pos._value =
         {
@@ -306,6 +297,30 @@ detect_main(const arucotag_frame *frame, float length,
         pose->data(to_string(ids[i]).c_str(), self)->ts.sec = tv.tv_sec;
         pose->data(to_string(ids[i]).c_str(), self)->ts.nsec = tv.tv_usec*1000;
         pose->write(to_string(ids[i]).c_str(), self);
+
+        // Compute centroid of tag
+        Point2f center(0, 0);
+        for(int p = 0; p < 4; p++)
+            center += corners[i][p];
+        center = center / 4.;
+
+        pixel_pose->data(to_string(ids[i]).c_str(), self)->ts = pose->data(to_string(ids[i]).c_str(), self)->ts;
+        pixel_pose->data(to_string(ids[i]).c_str(), self)->x = round(center.x);
+        pixel_pose->data(to_string(ids[i]).c_str(), self)->x = round(center.y);
+        pixel_pose->write(to_string(ids[i]).c_str(), self);
+
+        // Save for logs
+        (*tags)->valid_ids.push_back(ids[i]);
+        (*tags)->meas.push_back((Mat_<float>(8,1) <<
+            round(center.x),
+            round(center.y),
+            W_t_M.at<float>(0),
+            W_t_M.at<float>(1),
+            W_t_M.at<float>(2),
+            rpy.at<float>(0),
+            rpy.at<float>(1),
+            rpy.at<float>(2)
+        ));
     }
 
     if ((*tags)->valid_ids.size())
@@ -367,7 +382,9 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
                     tags->meas[i].at<float>(2),
                     tags->meas[i].at<float>(3),
                     tags->meas[i].at<float>(4),
-                    tags->meas[i].at<float>(5)
+                    tags->meas[i].at<float>(5),
+                    tags->meas[i].at<float>(6),
+                    tags->meas[i].at<float>(7)
                 );
                 if (i==0) strcpy((*log)->buffer, buffer);
                 else      strcat((*log)->buffer, buffer);
@@ -396,7 +413,9 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
  */
 genom_event
 add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
-           const arucotag_pose *pose, const genom_context self)
+           const arucotag_pose *pose,
+           const arucotag_pixel_pose *pixel_pose,
+           const genom_context self)
 {
     // Add new marker in port list
     uint16_t i;
@@ -409,7 +428,8 @@ add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
     (ports->_length)++;
     strncpy(ports->_buffer[i], marker, 16);
 
-    // Init new out port
+    // Init new out ports
+    pixel_pose->open(marker, self);
     pose->open(marker, self);
 
     pose->data(marker, self)->pos._present = true;
