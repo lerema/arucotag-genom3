@@ -147,7 +147,7 @@ detect_main(const arucotag_frame *frame, float length,
     Mat W_t_B, W_R_B;
     if (!(drone->read(self) == genom_ok && drone->data(self)))
     {
-        W_R_B = Mat::zeros(3, 3, CV_32F);
+        W_R_B = Mat::eye(3, 3, CV_32F);
         W_t_B = Mat::zeros(3, 1, CV_32F);
     }
     else
