@@ -228,39 +228,23 @@ detect_main(const arucotag_frame *frame, float length,
         Mat cov_pos = sigma_p*sigma_p * (J_pos.t() * J_pos).inv();
 
         // Convert rotation
-        float t;
-        Mat q;
-        if (W_R_M.at<float>(2,2) < 0)
-        {
-            if (W_R_M.at<float>(0,0) > W_R_M.at<float>(1,1))
-            {
-                t = 1 + W_R_M.at<float>(0,0) - W_R_M.at<float>(1,1) - W_R_M.at<float>(2,2);
-                q = (Mat_<float>(4,1) << t, W_R_M.at<float>(0,1)+W_R_M.at<float>(1,0), W_R_M.at<float>(2,0)+W_R_M.at<float>(0,2), W_R_M.at<float>(1,2)-W_R_M.at<float>(2,1) );
-            }
-            else
-            {
-                t = 1 - W_R_M.at<float>(0,0) + W_R_M.at<float>(1,1) - W_R_M.at<float>(2,2);
-                q = (Mat_<float>(4,1) << W_R_M.at<float>(0,1)+W_R_M.at<float>(1,0), t, W_R_M.at<float>(1,2)+W_R_M.at<float>(2,1), W_R_M.at<float>(2,0)-W_R_M.at<float>(0,2) );
-            }
-        }
-        else
-        {
-            if (W_R_M.at<float>(0,0) < -W_R_M.at<float>(1,1))
-            {
-                t = 1 - W_R_M.at<float>(0,0) - W_R_M.at<float>(1,1) + W_R_M.at<float>(2,2);
-                q = (Mat_<float>(4,1) << W_R_M.at<float>(2,0)+W_R_M.at<float>(0,2), W_R_M.at<float>(1,2)+W_R_M.at<float>(2,1), t, W_R_M.at<float>(0,1)-W_R_M.at<float>(1,0) );
-            }
-            else
-            {
-                t = 1 + W_R_M.at<float>(0,0) + W_R_M.at<float>(1,1) + W_R_M.at<float>(2,2);
-                q = (Mat_<float>(4,1) << W_R_M.at<float>(1,2)-W_R_M.at<float>(2,1), W_R_M.at<float>(2,0)-W_R_M.at<float>(0,2), W_R_M.at<float>(0,1)-W_R_M.at<float>(1,0), t );
-            }
-        }
-        q *= 0.5 / sqrt(t);
-        float& qw = q.at<float>(3);
-        float& qx = q.at<float>(0);
-        float& qy = q.at<float>(1);
-        float& qz = q.at<float>(2);
+        float& r11 = W_R_M.at<float>(0,0);
+        float& r22 = W_R_M.at<float>(1,1);
+        float& r33 = W_R_M.at<float>(2,2);
+
+        float& r12 = W_R_M.at<float>(0,1);
+        float& r21 = W_R_M.at<float>(1,0);
+
+        float& r32 = W_R_M.at<float>(2,1);
+        float& r23 = W_R_M.at<float>(1,2);
+
+        float& r13 = W_R_M.at<float>(0,2);
+        float& r31 = W_R_M.at<float>(2,0);
+
+        float qw = 0.5 * sqrt(1 + r11 + r22 + r33);
+        float qx = (r32 - r23 < 0) ? -0.5 * sqrt(r11 - r22 - r33 + 1) : 0.5 * sqrt(r11 - r22 - r33 + 1);
+        float qy = (r13 - r31 < 0) ? -0.5 * sqrt(r22 - r33 - r11 + 1) : 0.5 * sqrt(r22 - r33 - r11 + 1);
+        float qz = (r21 - r12 < 0) ? -0.5 * sqrt(r33 - r11 - r22 + 1) : 0.5 * sqrt(r33 - r11 - r22 + 1);
 
         Mat rpy = (Mat_<float>(3,1) <<
             atan2(2 * (qw*qx + qy*qz), 1 - 2 * (qx*qx + qy*qy)),
@@ -306,7 +290,7 @@ detect_main(const arucotag_frame *frame, float length,
 
         pixel_pose->data(to_string(ids[i]).c_str(), self)->ts = pose->data(to_string(ids[i]).c_str(), self)->ts;
         pixel_pose->data(to_string(ids[i]).c_str(), self)->x = round(center.x);
-        pixel_pose->data(to_string(ids[i]).c_str(), self)->x = round(center.y);
+        pixel_pose->data(to_string(ids[i]).c_str(), self)->y = round(center.y);
         pixel_pose->write(to_string(ids[i]).c_str(), self);
 
         // Save for logs
