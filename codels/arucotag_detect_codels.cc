@@ -246,6 +246,8 @@ detect_main(const arucotag_frame *frame, float length,
         float qy = (r13 - r31 < 0) ? -0.5 * sqrt(r22 - r33 - r11 + 1) : 0.5 * sqrt(r22 - r33 - r11 + 1);
         float qz = (r21 - r12 < 0) ? -0.5 * sqrt(r33 - r11 - r22 + 1) : 0.5 * sqrt(r33 - r11 - r22 + 1);
 
+        Mat q = (Mat_<float>(4,1) << qw, qx, qy, qz);
+
         Mat rpy = (Mat_<float>(3,1) <<
             atan2(2 * (qw*qx + qy*qz), 1 - 2 * (qx*qx + qy*qy)),
             asin(2 * (qw*qy - qz*qx)),
@@ -270,10 +272,10 @@ detect_main(const arucotag_frame *frame, float length,
         };
         pose->data(to_string(ids[i]).c_str(), self)->att._value =
         {
-            q.at<float>(3),
             q.at<float>(0),
             q.at<float>(1),
-            q.at<float>(2)
+            q.at<float>(2),
+            q.at<float>(3)
         };
 
         timeval tv;
