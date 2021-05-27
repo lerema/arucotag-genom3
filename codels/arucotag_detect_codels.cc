@@ -43,6 +43,7 @@ detect_start(arucotag_ids *ids, const genom_context self)
 {
     // Init IDS fields
     ids->length = 0;
+    ids->out_frame = 0;
     ids->calib = new arucotag_calib();
     ids->tags = new arucotag_detector();
     ids->log = new arucotag_log_s();
@@ -114,7 +115,7 @@ detect_main(const arucotag_frame *frame, float length,
             arucotag_detector **tags,
             const sequence_arucotag_portinfo *ports,
             const arucotag_pose *pose,
-            const arucotag_pixel_pose *pixel_pose,
+            const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
             const genom_context self)
 {
     // Sleep if no marker is tracked
@@ -183,11 +184,25 @@ detect_main(const arucotag_frame *frame, float length,
 
         // Transform to world frame
         Mat C_t_M = (Mat_<float>(3,1) << translations[i][0], translations[i][1], translations[i][2]);
-        Mat W_t_M = W_R_B * (calib->B_R_C * C_t_M + calib->B_t_C) + W_t_B;
         Mat C_R_M = Mat::zeros(3,3, CV_32F);
         Rodrigues(rotations[i], C_R_M);
         C_R_M.convertTo(C_R_M, CV_32F);
-        Mat W_R_M = W_R_B * calib->B_R_C * C_R_M;
+        Mat position, orientation;
+        switch (out_frame)
+        {
+            case 0:  // Camera frame
+                position = C_t_M;
+                orientation = C_R_M;
+                break;
+            case 1:  // Body frame
+                position = (calib->B_R_C * C_t_M + calib->B_t_C);
+                orientation = calib->B_R_C * C_R_M;
+                break;
+            case 2:  // World frame
+                position = W_R_B * (calib->B_R_C * C_t_M + calib->B_t_C) + W_t_B;
+                orientation = W_R_B * calib->B_R_C * C_R_M;
+                break;
+        }
 
         // Compute covariance
         // arbitrary isotropic pixel error
@@ -228,18 +243,16 @@ detect_main(const arucotag_frame *frame, float length,
         Mat cov_pos = sigma_p*sigma_p * (J_pos.t() * J_pos).inv();
 
         // Convert rotation
-        float& r11 = W_R_M.at<float>(0,0);
-        float& r22 = W_R_M.at<float>(1,1);
-        float& r33 = W_R_M.at<float>(2,2);
-
-        float& r12 = W_R_M.at<float>(0,1);
-        float& r21 = W_R_M.at<float>(1,0);
-
-        float& r32 = W_R_M.at<float>(2,1);
-        float& r23 = W_R_M.at<float>(1,2);
-
-        float& r13 = W_R_M.at<float>(0,2);
-        float& r31 = W_R_M.at<float>(2,0);
+        // Equations taken from [CITE BOOK, p. CITE PAGE]
+        float& r11 = orientation.at<float>(0,0);
+        float& r12 = orientation.at<float>(0,1);
+        float& r13 = orientation.at<float>(0,2);
+        float& r21 = orientation.at<float>(1,0);
+        float& r22 = orientation.at<float>(1,1);
+        float& r23 = orientation.at<float>(1,2);
+        float& r31 = orientation.at<float>(2,0);
+        float& r32 = orientation.at<float>(2,1);
+        float& r33 = orientation.at<float>(2,2);
 
         float qw = 0.5 * sqrt(1 + r11 + r22 + r33);
         float qx = (r32 - r23 < 0) ? -0.5 * sqrt(r11 - r22 - r33 + 1) : 0.5 * sqrt(r11 - r22 - r33 + 1);
@@ -257,9 +270,9 @@ detect_main(const arucotag_frame *frame, float length,
         // Publish
         pose->data(to_string(ids[i]).c_str(), self)->pos._value =
         {
-            W_t_M.at<float>(0),
-            W_t_M.at<float>(1),
-            W_t_M.at<float>(2)
+            position.at<float>(0),
+            position.at<float>(1),
+            position.at<float>(2)
         };
         pose->data(to_string(ids[i]).c_str(), self)->pos_cov._value =
         {
@@ -300,9 +313,9 @@ detect_main(const arucotag_frame *frame, float length,
         (*tags)->meas.push_back((Mat_<float>(8,1) <<
             round(center.x),
             round(center.y),
-            W_t_M.at<float>(0),
-            W_t_M.at<float>(1),
-            W_t_M.at<float>(2),
+            position.at<float>(0),
+            position.at<float>(1),
+            position.at<float>(2),
             rpy.at<float>(0),
             rpy.at<float>(1),
             rpy.at<float>(2)
@@ -321,8 +334,8 @@ detect_main(const arucotag_frame *frame, float length,
  * Yields to arucotag_pause_main.
  */
 genom_event
-detect_log(const arucotag_detector *tags, arucotag_log_s **log,
-           const genom_context self)
+detect_log(int16_t out_frame, const arucotag_detector *tags,
+           arucotag_log_s **log, const genom_context self)
 {
     if (*log)
     {
@@ -362,6 +375,7 @@ detect_log(const arucotag_detector *tags, arucotag_log_s **log,
                     "%s" arucotag_log_fmt "\n",
                     (*log)->skipped ? "\n" : "",
                     tv.tv_sec, tv.tv_usec*1000,
+                    out_frame,
                     tags->valid_ids[i],
                     tags->meas[i].at<float>(0),
                     tags->meas[i].at<float>(1),

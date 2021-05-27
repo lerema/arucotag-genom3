@@ -27,6 +27,23 @@
 
 #include "codels.hpp"
 
+/* --- Attribute output_frame ------------------------------------------- */
+
+/** Validation codel output_frame of attribute output_frame.
+ *
+ * Returns genom_ok.
+ * Throws .
+ */
+genom_event
+output_frame(int16_t out_frame, const genom_context self)
+{
+    if (out_frame < 0 || out_frame > 2) {
+        warnx("wrong output frame value (allowed: 0, 1, 2)");
+        errno = EDOM;
+        return arucotag_e_sys_error("wrong value", self);
+    }
+    return genom_ok;
+}
 
 /* --- Function log ----------------------------------------------------- */
 

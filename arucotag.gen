@@ -64,11 +64,12 @@ component arucotag {
     /* ---- IDS ----------------------------------------------------------- */
     ids {
         float length;
+        short out_frame;
+
         calib calib;
         detector tags;
 
         sequence<portinfo> ports;
-
         log_s log;
     };
 
@@ -82,10 +83,10 @@ component arucotag {
         codel<wait> detect_wait(in length, in intrinsics, in extrinsics, in frame, out calib)
             yield pause::wait, main;
 
-        codel<main> detect_main(in frame, in length, in calib, in drone, out tags, in ports, out pose, out pixel_pose)
+        codel<main> detect_main(in frame, in length, in calib, in drone, out tags, in ports, out pose, out pixel_pose, in out_frame)
             yield pause::main, log;
 
-        codel<log> detect_log(in tags, inout log)
+        codel<log> detect_log(in out_frame, in tags, inout log)
             yield pause::main;
     };
 
@@ -97,6 +98,14 @@ component arucotag {
 
     /* ---- Getters/Setters ----------------------------------------------- */
     attribute set_length(in length = : "Length of tags");
+    attribute output_frame(in out_frame = 0: "desired output frame (0: camera; 1: body; 2: world)") {
+        doc "Sets the frame in which the output coordinates are expressed.";
+        doc "Possible frames are camera (0), body (1) or world (2).";
+        doc "(1) assumes that the extrinsic parameters of the camera are properly set.";
+        doc "(2) assumes (1) and that the drone input port is connected.";
+        validate output_frame(local in out_frame);
+        throw e_sys;
+    };
 
     /* ---- Logging ------------------------------------------------------- */
     function log(in string<64> path = "/tmp/arucotag.log": "Log file name",

@@ -50,7 +50,7 @@ struct  arucotag_calib {
 
 
 struct arucotag_detector {
-    Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250);
+    Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250); // TODO give choice of dictionary
     vector<int> valid_ids;
     vector<Mat> meas;
 };
@@ -68,9 +68,9 @@ struct arucotag_log_s {
     }
     # define arucotag_logfmt	"%g "
     # define arucotag_log_header                                            \
-        "ts i px py x y z roll pitch yaw "
+        "ts frame i px py x y z roll pitch yaw "
     # define arucotag_log_fmt                                               \
-        "%ld.%09ld %i "                                                     \
+        "%ld.%09ld %i %i "                                                  \
         arucotag_logfmt arucotag_logfmt                                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt
@@ -81,16 +81,11 @@ static inline genom_event
 arucotag_e_sys_error(const char *s, genom_context self)
 {
     arucotag_e_sys_detail d;
-    size_t l = 0;
-
+    char buf[64], *p;
     d.code = errno;
-    if (s) {
-        strncpy(d.what, s, sizeof(d.what) - 3);
-        l = strlen(s);
-        strcpy(d.what + l, ": ");
-        l += 2;
-    }
-    if (strerror_r(d.code, d.what + l, sizeof(d.what) - l)) { /* ignore error*/; }
+
+    p = strerror_r(d.code, buf, sizeof(buf));
+    snprintf(d.what, sizeof(d.what), "%s%s%s", s ? s : "", s ? ": " : "", p);
     return arucotag_e_sys(&d, self);
 }
 
