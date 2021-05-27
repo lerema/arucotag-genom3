@@ -243,7 +243,7 @@ detect_main(const arucotag_frame *frame, float length,
         Mat cov_pos = sigma_p*sigma_p * (J_pos.t() * J_pos).inv();
 
         // Convert rotation
-        // Equations taken from [CITE BOOK, p. CITE PAGE]
+        // Equations taken from [Robotics (Siciliano), p. 55]
         float& r11 = orientation.at<float>(0,0);
         float& r12 = orientation.at<float>(0,1);
         float& r13 = orientation.at<float>(0,2);
@@ -254,7 +254,7 @@ detect_main(const arucotag_frame *frame, float length,
         float& r32 = orientation.at<float>(2,1);
         float& r33 = orientation.at<float>(2,2);
 
-        float qw = 0.5 * sqrt(1 + r11 + r22 + r33);
+        float qw = 0.5 * sqrt(max(1 + r11 + r22 + r33, 0.f));
         float qx = (r32 - r23 < 0) ? -0.5 * sqrt(r11 - r22 - r33 + 1) : 0.5 * sqrt(r11 - r22 - r33 + 1);
         float qy = (r13 - r31 < 0) ? -0.5 * sqrt(r22 - r33 - r11 + 1) : 0.5 * sqrt(r22 - r33 - r11 + 1);
         float qz = (r21 - r12 < 0) ? -0.5 * sqrt(r33 - r11 - r22 + 1) : 0.5 * sqrt(r33 - r11 - r22 + 1);
