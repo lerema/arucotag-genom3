@@ -255,9 +255,9 @@ detect_main(const arucotag_frame *frame, float length,
         float& r33 = orientation.at<float>(2,2);
 
         float qw = 0.5 * sqrt(max(1 + r11 + r22 + r33, 0.f));
-        float qx = (r32 - r23 < 0) ? -0.5 * sqrt(r11 - r22 - r33 + 1) : 0.5 * sqrt(r11 - r22 - r33 + 1);
-        float qy = (r13 - r31 < 0) ? -0.5 * sqrt(r22 - r33 - r11 + 1) : 0.5 * sqrt(r22 - r33 - r11 + 1);
-        float qz = (r21 - r12 < 0) ? -0.5 * sqrt(r33 - r11 - r22 + 1) : 0.5 * sqrt(r33 - r11 - r22 + 1);
+        float qx = (r32 - r23 < 0) ? -0.5 * sqrt(max(r11 - r22 - r33 + 1, 0.f)) : 0.5 * sqrt(max(r11 - r22 - r33 + 1, 0.f));
+        float qy = (r13 - r31 < 0) ? -0.5 * sqrt(max(r22 - r33 - r11 + 1, 0.f)) : 0.5 * sqrt(max(r22 - r33 - r11 + 1, 0.f));
+        float qz = (r21 - r12 < 0) ? -0.5 * sqrt(max(r33 - r11 - r22 + 1, 0.f)) : 0.5 * sqrt(max(r33 - r11 - r22 + 1, 0.f));
 
         Mat q = (Mat_<float>(4,1) << qw, qx, qy, qz);
 
