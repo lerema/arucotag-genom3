@@ -118,8 +118,6 @@ detect_main(const arucotag_frame *frame, float length,
             const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
             const genom_context self)
 {
-timeval start_codel, stop_codel;
-gettimeofday(&start_codel, NULL);
     // Sleep if no marker is tracked
     if (!ports->_length) return arucotag_pause_main;
 
