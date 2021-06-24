@@ -465,6 +465,17 @@ add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
     pixel_pose->open(marker, self);
     pose->open(marker, self);
 
+    // Publish empty message
+    timeval tv;
+    gettimeofday(&tv, NULL);
+    pose->data(marker, self)->ts.sec = tv.tv_sec;
+    pose->data(marker, self)->ts.nsec = tv.tv_usec*1000;
+    pose->data(marker, self)->pos._present = false;
+    pose->data(marker, self)->pos_cov._present = false;
+    pose->data(marker, self)->att._present = false;
+    pose->data(marker, self)->att_cov._present = false;
+    pose->write(marker, self);
+
     warnx("tracking new marker: %s", marker);
     return arucotag_ether;
 }
