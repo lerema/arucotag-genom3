@@ -150,6 +150,10 @@ detect_main(const arucotag_frame *frame, float length,
             pose->data(ports->_buffer[i], self)->att._present = false;
             pose->data(ports->_buffer[i], self)->att_cov._present = false;
             pose->write(ports->_buffer[i], self);
+
+            pixel_pose->data(ports->_buffer[i], self)->ts = pose->data(ports->_buffer[i], self)->ts;
+            pixel_pose->data(ports->_buffer[i], self)->pix._present = false;
+            pixel_pose->write(ports->_buffer[i], self);
         }
         return arucotag_pause_main;
     }
@@ -166,6 +170,10 @@ detect_main(const arucotag_frame *frame, float length,
                 pose->data(ports->_buffer[i], self)->att._present = false;
                 pose->data(ports->_buffer[i], self)->att_cov._present = false;
                 pose->write(ports->_buffer[i], self);
+
+                pixel_pose->data(ports->_buffer[i], self)->ts = pose->data(ports->_buffer[i], self)->ts;
+                pixel_pose->data(ports->_buffer[i], self)->pix._present = false;
+                pixel_pose->write(ports->_buffer[i], self);
             }
 
     // Estimate pose from corners
@@ -337,8 +345,9 @@ detect_main(const arucotag_frame *frame, float length,
         center = center / 4.;
 
         pixel_pose->data(to_string(ids[i]).c_str(), self)->ts = pose->data(to_string(ids[i]).c_str(), self)->ts;
-        pixel_pose->data(to_string(ids[i]).c_str(), self)->x = round(center.x);
-        pixel_pose->data(to_string(ids[i]).c_str(), self)->y = round(center.y);
+        pixel_pose->data(to_string(ids[i]).c_str(), self)->pix._present = true;
+        pixel_pose->data(to_string(ids[i]).c_str(), self)->pix._value.x = round(center.x);
+        pixel_pose->data(to_string(ids[i]).c_str(), self)->pix._value.y = round(center.y);
         pixel_pose->write(to_string(ids[i]).c_str(), self);
 
         // Save for logs
@@ -468,6 +477,7 @@ add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
     // Publish empty message
     timeval tv;
     gettimeofday(&tv, NULL);
+
     pose->data(marker, self)->ts.sec = tv.tv_sec;
     pose->data(marker, self)->ts.nsec = tv.tv_usec*1000;
     pose->data(marker, self)->pos._present = false;
@@ -475,6 +485,10 @@ add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
     pose->data(marker, self)->att._present = false;
     pose->data(marker, self)->att_cov._present = false;
     pose->write(marker, self);
+
+    pixel_pose->data(marker, self)->ts = pose->data(marker, self)->ts;
+    pixel_pose->data(marker, self)->pix._present = false;
+    pixel_pose->write(marker, self);
 
     warnx("tracking new marker: %s", marker);
     return arucotag_ether;
