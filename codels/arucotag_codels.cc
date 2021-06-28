@@ -32,7 +32,7 @@
 /** Validation codel output_frame of attribute output_frame.
  *
  * Returns genom_ok.
- * Throws .
+ * Throws arucotag_e_sys.
  */
 genom_event
 output_frame(int16_t out_frame, const genom_context self)

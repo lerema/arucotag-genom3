@@ -185,8 +185,9 @@ a|.Data structure
  ** `struct ::or::time::ts` `ts`
  *** `long` `sec`
  *** `long` `nsec`
- ** `unsigned short` `x`
- ** `unsigned short` `y`
+ ** `optional< struct ::or::sensor::pix_s >` `pix`
+ *** `unsigned short` `x`
+ *** `unsigned short` `y`
 
 |===
 
@@ -249,6 +250,76 @@ a|.Data structure
 
 '''
 
+[[frame]]
+=== frame (in)
+
+
+[role="small", width="50%", float="right", cols="1"]
+|===
+a|.Data structure
+[disc]
+ * `struct ::or::sensor::frame` `frame`
+ ** `struct ::or::time::ts` `ts`
+ *** `long` `sec`
+ *** `long` `nsec`
+ ** `boolean` `compressed`
+ ** `unsigned short` `height`
+ ** `unsigned short` `width`
+ ** `unsigned short` `bpp`
+ ** `sequence< octet >` `pixels`
+
+|===
+
+'''
+
+[[intrinsics]]
+=== intrinsics (in)
+
+
+[role="small", width="50%", float="right", cols="1"]
+|===
+a|.Data structure
+[disc]
+ * `struct ::or::sensor::intrinsics` `intrinsics`
+ ** `struct ::or::sensor::calibration` `calib`
+ *** `float` `fx`
+ *** `float` `fy`
+ *** `float` `cx`
+ *** `float` `cy`
+ *** `float` `gamma`
+ ** `struct ::or::sensor::distortion` `disto`
+ *** `float` `k1`
+ *** `float` `k2`
+ *** `float` `k3`
+ *** `float` `p1`
+ *** `float` `p2`
+
+|===
+
+'''
+
+[[extrinsics]]
+=== extrinsics (in)
+
+
+[role="small", width="50%", float="right", cols="1"]
+|===
+a|.Data structure
+[disc]
+ * `struct ::or::sensor::extrinsics` `extrinsics`
+ ** `struct ::or::sensor::translation` `trans`
+ *** `float` `tx`
+ *** `float` `ty`
+ *** `float` `tz`
+ ** `struct ::or::sensor::rotation` `rot`
+ *** `float` `roll`
+ *** `float` `pitch`
+ *** `float` `yaw`
+
+|===
+
+'''
+
 == Services
 
 [[add_marker]]
@@ -291,6 +362,12 @@ a|.Inputs
 a|.Inputs
 [disc]
  * `short` `out_frame` (default `"0"`) desired output frame (0: camera; 1: body; 2: world)
+
+a|.Throws
+[disc]
+ * `exception ::arucotag::e_sys`
+ ** `short` `code`
+ ** `string<128>` `what`
 
 |===
 
@@ -353,6 +430,9 @@ a|.Outputs
 a|.Context
 [disc]
   * Frequency 33.333333333333336 _Hz_
+* Updates port `<<pose>>`
+* Updates port `<<pixel_pose>>`
+* Reads port `<<drone>>`
 * Reads port `<<frame>>`
 * Reads port `<<intrinsics>>`
 * Reads port `<<extrinsics>>`

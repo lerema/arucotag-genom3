@@ -37,9 +37,6 @@ component arucotag {
     require         "genom3 >= 2.99.26";
     codels-require  "opencv";
 
-    /* ---- Interfaces ---------------------------------------------------- */
-    uses    or_camera;
-
     /* ---- Exceptions ---------------------------------------------------- */
     exception e_sys { short code; string<128> what; };
 
@@ -54,12 +51,11 @@ component arucotag {
     /* ---- Ports --------------------------------------------------------- */
     port multiple out or_pose_estimator::state pose;
     port multiple out or::sensor::pixel pixel_pose;
-    port in or_pose_estimator::state drone;
-    /* interfaces ports:
-     *  port in   or::sensor::frame         frame;
-     *  port in   or::sensor::intrinsics    intrinsics;
-     *  port in   or::sensor::extrinsics    extrinsics;
-     */
+    port in or_pose_estimator::state    drone;
+    port in or::sensor::frame           frame;
+    port in or::sensor::intrinsics      intrinsics;
+    port in or::sensor::extrinsics      extrinsics;
+
 
     /* ---- IDS ----------------------------------------------------------- */
     ids {
