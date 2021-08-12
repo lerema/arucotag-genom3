@@ -352,7 +352,7 @@ detect_main(const arucotag_frame *frame, float length,
 
         // Save for logs
         (*tags)->valid_ids.push_back(ids[i]);
-        (*tags)->meas.push_back((Mat_<float>(8,1) <<
+        (*tags)->meas.push_back((Mat_<float>(14,1) <<
             round(center.x),
             round(center.y),
             position.at<float>(0),
@@ -360,7 +360,13 @@ detect_main(const arucotag_frame *frame, float length,
             position.at<float>(2),
             rpy.at<float>(0),
             rpy.at<float>(1),
-            rpy.at<float>(2)
+            rpy.at<float>(2),
+            cov_pos.at<float>(0,0),
+            cov_pos.at<float>(1,0),
+            cov_pos.at<float>(1,1),
+            cov_pos.at<float>(2,0),
+            cov_pos.at<float>(2,1),
+            cov_pos.at<float>(2,2)
         ));
     }
 
@@ -426,7 +432,13 @@ detect_log(int16_t out_frame, const arucotag_detector *tags,
                     tags->meas[i].at<float>(4),
                     tags->meas[i].at<float>(5),
                     tags->meas[i].at<float>(6),
-                    tags->meas[i].at<float>(7)
+                    tags->meas[i].at<float>(7),
+                    tags->meas[i].at<float>(8),
+                    tags->meas[i].at<float>(9),
+                    tags->meas[i].at<float>(10),
+                    tags->meas[i].at<float>(11),
+                    tags->meas[i].at<float>(12),
+                    tags->meas[i].at<float>(13)
                 );
                 if (i==0) strcpy((*log)->buffer, buffer);
                 else      strcat((*log)->buffer, buffer);
