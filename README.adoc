@@ -47,75 +47,6 @@ endif::[]
 == Ports
 
 
-[[frame]]
-=== frame (in)
-
-
-[role="small", width="50%", float="right", cols="1"]
-|===
-a|.Data structure
-[disc]
- * `struct ::or::sensor::frame` `frame`
- ** `struct ::or::time::ts` `ts`
- *** `long` `sec`
- *** `long` `nsec`
- ** `unsigned short` `height`
- ** `unsigned short` `width`
- ** `unsigned short` `bpp`
- ** `sequence< octet >` `pixels`
-
-|===
-
-'''
-
-[[intrinsics]]
-=== intrinsics (in)
-
-
-[role="small", width="50%", float="right", cols="1"]
-|===
-a|.Data structure
-[disc]
- * `struct ::or::sensor::intrinsics` `intrinsics`
- ** `struct ::or::sensor::calibration` `calib`
- *** `float` `fx`
- *** `float` `fy`
- *** `float` `cx`
- *** `float` `cy`
- *** `float` `gamma`
- ** `struct ::or::sensor::distortion` `disto`
- *** `float` `k1`
- *** `float` `k2`
- *** `float` `k3`
- *** `float` `p1`
- *** `float` `p2`
-
-|===
-
-'''
-
-[[extrinsics]]
-=== extrinsics (in)
-
-
-[role="small", width="50%", float="right", cols="1"]
-|===
-a|.Data structure
-[disc]
- * `struct ::or::sensor::extrinsics` `extrinsics`
- ** `struct ::or::sensor::translation` `trans`
- *** `float` `tx`
- *** `float` `ty`
- *** `float` `tz`
- ** `struct ::or::sensor::rotation` `rot`
- *** `float` `roll`
- *** `float` `pitch`
- *** `float` `yaw`
-
-|===
-
-'''
-
 [[pose]]
 === pose (multiple out)
 
@@ -436,9 +367,6 @@ a|.Context
 * Reads port `<<frame>>`
 * Reads port `<<intrinsics>>`
 * Reads port `<<extrinsics>>`
-* Updates port `<<pose>>`
-* Updates port `<<pixel_pose>>`
-* Reads port `<<drone>>`
 |===
 
 '''

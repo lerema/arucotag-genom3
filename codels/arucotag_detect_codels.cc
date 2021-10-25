@@ -149,6 +149,7 @@ detect_main(const arucotag_frame *frame, float length,
             pose->data(ports->_buffer[i], self)->pos_cov._present = false;
             pose->data(ports->_buffer[i], self)->att._present = false;
             pose->data(ports->_buffer[i], self)->att_cov._present = false;
+            pose->data(ports->_buffer[i], self)->att_pos_cov._present = false;
             pose->write(ports->_buffer[i], self);
 
             pixel_pose->data(ports->_buffer[i], self)->ts = pose->data(ports->_buffer[i], self)->ts;
@@ -169,6 +170,7 @@ detect_main(const arucotag_frame *frame, float length,
                 pose->data(ports->_buffer[i], self)->pos_cov._present = false;
                 pose->data(ports->_buffer[i], self)->att._present = false;
                 pose->data(ports->_buffer[i], self)->att_cov._present = false;
+                pose->data(ports->_buffer[i], self)->att_pos_cov._present = false;
                 pose->write(ports->_buffer[i], self);
 
                 pixel_pose->data(ports->_buffer[i], self)->ts = pose->data(ports->_buffer[i], self)->ts;
@@ -244,7 +246,7 @@ detect_main(const arucotag_frame *frame, float length,
         // arbitrary isotropic pixel error
         float sigma_p = 3;
 
-        Mat J_pos = Mat::zeros(8,3, CV_32F);
+        Mat J = Mat::zeros(8,6, CV_32F);
         Mat c = (Mat_<float>(3,4) <<
             -1,  1,  1, -1,
             -1, -1,  1,  1,
@@ -273,10 +275,13 @@ detect_main(const arucotag_frame *frame, float length,
             J_proj(Rect(3,0,3,3)) = -calib->K * C_R_M * skew;
             // jacobian of projection wrt euclidean coordinates (chain rule)
             Mat J_full = J_pix*J_proj;
-            J_full(Rect(0,0,3,2)).copyTo(J_pos(Rect(0,i*2,3,2)));
+            J_full.copyTo(J(Rect(0,i*2,6,2)));
         }
 
-        Mat cov_pos = sigma_p*sigma_p * (J_pos.t() * J_pos).inv();
+        Mat cov = sigma_p*sigma_p * (J.t() * J).inv();
+        Mat cov_pos, cov_rot;
+        cov(Rect(0,0,3,3)).copyTo(cov_pos);
+        cov(Rect(3,3,3,3)).copyTo(cov_rot);
 
         // Convert rotation
         // Equations taken from [Robotics (Siciliano), p. 55]
@@ -303,11 +308,33 @@ detect_main(const arucotag_frame *frame, float length,
             atan2(2 * (qw*qz + qx*qy), 1 - 2 * (qy*qy + qz*qz))
         );
 
+        // Convert rotation covariance
+        float qv_norm = sqrt(qx*qx + qy*qy + qz*qz);
+        float theta = 2*atan2(qv_norm, qw);
+        Mat J_T = Mat::zeros(3,4, CV_32F);    // Jacobian of T: q -> theta*u ; 1/qv_norm^3 is extracted out of the matrix to avoid numerical issue before inversion
+        J_T.at<float>(0,0) = 2*pow(qv_norm,3)*qx/(qw*qw+qv_norm*qv_norm);
+        J_T.at<float>(1,0) = 2*pow(qv_norm,3)*qy/(qw*qw+qv_norm*qv_norm);
+        J_T.at<float>(2,0) = 2*pow(qv_norm,3)*qz/(qw*qw+qv_norm*qv_norm);
+        J_T.at<float>(0,1) = pow(qv_norm,2)*theta + pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T.at<float>(1,1) = pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T.at<float>(2,1) = pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T.at<float>(0,2) = pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T.at<float>(1,2) = pow(qv_norm,2)*theta + pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T.at<float>(2,2) = pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T.at<float>(0,3) = pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T.at<float>(1,3) = pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T.at<float>(2,3) = pow(qv_norm,2)*theta + pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        Mat J_Tm1;
+        invert(J_T, J_Tm1, DECOMP_SVD);
+        J_Tm1 = J_Tm1 * pow(qv_norm,3);
+        Mat cov_q = J_Tm1 * cov_rot * J_Tm1.t();
+
         // Publish
         pose->data(to_string(ids[i]).c_str(), self)->pos._present = true;
         pose->data(to_string(ids[i]).c_str(), self)->pos_cov._present = true;
         pose->data(to_string(ids[i]).c_str(), self)->att._present = true;
-        pose->data(to_string(ids[i]).c_str(), self)->att_cov._present = false;
+        pose->data(to_string(ids[i]).c_str(), self)->att_cov._present = true;
+        pose->data(to_string(ids[i]).c_str(), self)->att_pos_cov._present = false;
 
         pose->data(to_string(ids[i]).c_str(), self)->pos._value =
         {
@@ -330,6 +357,19 @@ detect_main(const arucotag_frame *frame, float length,
             q.at<float>(1),
             q.at<float>(2),
             q.at<float>(3)
+        };
+        pose->data(to_string(ids[i]).c_str(), self)->att_cov._value =
+        {
+            cov_q.at<float>(0,0),
+            cov_q.at<float>(1,0),
+            cov_q.at<float>(1,1),
+            cov_q.at<float>(2,0),
+            cov_q.at<float>(2,1),
+            cov_q.at<float>(2,2),
+            cov_q.at<float>(3,0),
+            cov_q.at<float>(3,1),
+            cov_q.at<float>(3,2),
+            cov_q.at<float>(3,3)
         };
 
         timeval tv;
@@ -366,7 +406,17 @@ detect_main(const arucotag_frame *frame, float length,
             cov_pos.at<float>(1,1),
             cov_pos.at<float>(2,0),
             cov_pos.at<float>(2,1),
-            cov_pos.at<float>(2,2)
+            cov_pos.at<float>(2,2),
+            cov_q.at<float>(0,0),
+            cov_q.at<float>(1,0),
+            cov_q.at<float>(1,1),
+            cov_q.at<float>(2,0),
+            cov_q.at<float>(2,1),
+            cov_q.at<float>(2,2),
+            cov_q.at<float>(3,0),
+            cov_q.at<float>(3,1),
+            cov_q.at<float>(3,2),
+            cov_q.at<float>(3,3)
         ));
     }
 
@@ -425,20 +475,30 @@ detect_log(int16_t out_frame, const arucotag_detector *tags,
                     tv.tv_sec, tv.tv_usec*1000,
                     out_frame,
                     tags->valid_ids[i],
-                    tags->meas[i].at<float>(0),
+                    tags->meas[i].at<float>(0), // pixel
                     tags->meas[i].at<float>(1),
-                    tags->meas[i].at<float>(2),
+                    tags->meas[i].at<float>(2), // p
                     tags->meas[i].at<float>(3),
                     tags->meas[i].at<float>(4),
-                    tags->meas[i].at<float>(5),
+                    tags->meas[i].at<float>(5), // att (euler)
                     tags->meas[i].at<float>(6),
                     tags->meas[i].at<float>(7),
-                    tags->meas[i].at<float>(8),
+                    tags->meas[i].at<float>(8), // Sigma_p
                     tags->meas[i].at<float>(9),
                     tags->meas[i].at<float>(10),
                     tags->meas[i].at<float>(11),
                     tags->meas[i].at<float>(12),
-                    tags->meas[i].at<float>(13)
+                    tags->meas[i].at<float>(13),
+                    tags->meas[i].at<float>(14), // Sigma_q
+                    tags->meas[i].at<float>(15),
+                    tags->meas[i].at<float>(16),
+                    tags->meas[i].at<float>(17),
+                    tags->meas[i].at<float>(18),
+                    tags->meas[i].at<float>(19),
+                    tags->meas[i].at<float>(20),
+                    tags->meas[i].at<float>(21),
+                    tags->meas[i].at<float>(22),
+                    tags->meas[i].at<float>(23)
                 );
                 if (i==0) strcpy((*log)->buffer, buffer);
                 else      strcat((*log)->buffer, buffer);
