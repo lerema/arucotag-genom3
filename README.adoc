@@ -272,6 +272,28 @@ a|.Context
 
 '''
 
+[[set_calib]]
+=== set_calib (activity)
+
+[role="small", width="50%", float="right", cols="1"]
+|===
+a|.Throws
+[disc]
+ * `exception ::arucotag::e_io`
+ ** `string<128>` `what`
+
+a|.Context
+[disc]
+  * In task `<<detect>>`
+  (frequency 33.333333333333336 _Hz_)
+  * Reads port `<<intrinsics>>`
+  * Reads port `<<extrinsics>>`
+|===
+
+Read calibration from input ports and update internal matrices.
+
+'''
+
 [[set_length]]
 === set_length (attribute)
 
