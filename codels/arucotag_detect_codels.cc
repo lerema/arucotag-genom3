@@ -160,6 +160,7 @@ detect_main(const arucotag_frame *frame, float length,
         return arucotag_pause_main;
     }
     else
+    {
         // Publish empty message for tags that are not detected
         for (uint16_t i=0; i<ports->_length; i++)
             if (find(ids.begin(), ids.end(), std::stoi(ports->_buffer[i])) == ids.end())
@@ -179,6 +180,27 @@ detect_main(const arucotag_frame *frame, float length,
                 pixel_pose->data(ports->_buffer[i], self)->pix._present = false;
                 pixel_pose->write(ports->_buffer[i], self);
             }
+    }
+
+    // Discard previous detections
+    (*tags)->valid_ids.clear();
+    (*tags)->meas.clear();
+
+    // Check that detected tags are among tracked markers
+    for (uint16_t i=0; i<ids.size(); i++)
+    {
+        const char* id = to_string(ids[i]).c_str();
+        uint16_t j = 0;
+        for (j=0; j<ports->_length; j++)
+            if (!strcmp(ports->_buffer[j], id))
+                break;
+        if (j >= ports->_length) continue;
+        (*tags)->valid_ids.push_back(ids[i]);
+    }
+
+    // If none of the detected tags is tracked, stop
+    if ((*tags)->valid_ids.size())
+        return arucotag_pause_main;
 
     // Estimate pose from corners
     vector<Vec3d> translations, rotations;
@@ -210,37 +232,19 @@ detect_main(const arucotag_frame *frame, float length,
         );
     }
 
-    (*tags)->valid_ids.clear();
-    (*tags)->meas.clear();
-
-    for (uint16_t i=0; i<ids.size(); i++)
+    // Process detected tags
+    for (uint16_t i=0; i<(*tags)->valid_ids.size(); i++)
     {
-        // Check that detected tags are among tracked markers
-        const char* id = to_string(ids[i]).c_str();
-        uint16_t j = 0;
-        for (j=0; j<ports->_length; j++)
-            if (!strcmp(ports->_buffer[j], id))
-                break;
-        if (j >= ports->_length) continue;
-
         // Get translation and rotation
         Mat C_p_M = (Mat_<float>(3,1) << translations[i][0], translations[i][1], translations[i][2]);
         Mat C_R_M = Mat::zeros(3,3, CV_32F);
-        Rodrigues(rotations[i], C_R_M); // Converts C_R_M in doubles
-        C_R_M.convertTo(C_R_M, CV_32F);
-
-        // Compute covariance
-        // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
-        Mat J = Mat::zeros(8,6, CV_32F);    // Jacobian of
-        float sigma_p = 3;  // arbitrary isotropic pixel error
-        Rodrigues(rotations[i], C_R_M); // Converts C_R_M in doubles
+        Rodrigues(rotations[i], C_R_M); // This call converts C_R_M in doubles
         C_R_M.convertTo(C_R_M, CV_32F);
 
         // Compute covariance
         // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
         Mat J = Mat::zeros(8,6, CV_32F);    // Jacobian of f^-1
         float sigma_p = 3;                  // Arbitrary isotropic pixel error
-
 
         Mat c = (Mat_<float>(3,4) <<        // Coordinates of corners in marker frame
             -1,  1,  1, -1,
@@ -274,7 +278,7 @@ detect_main(const arucotag_frame *frame, float length,
             J_full.copyTo(J(Rect(0,i*2,6,2)));
         }
 
-        // first order propagation
+        // First order propagation
         // Cross (pos/rot) covariance is neglected since I dunno how to transform it into quaterion covariance
         Mat cov = sigma_p*sigma_p * (J.t() * J).inv();
         Mat cov_pos, cov_rot;
@@ -409,7 +413,6 @@ detect_main(const arucotag_frame *frame, float length,
         );
 
         // push found
-        (*tags)->valid_ids.push_back(ids[i]);
         (*tags)->meas.push_back((Mat_<float>(14,1) <<
             round(center.x),
             round(center.y),
@@ -438,9 +441,7 @@ detect_main(const arucotag_frame *frame, float length,
         ));
     }
 
-    if ((*tags)->valid_ids.size())
-        return arucotag_log;
-    return arucotag_pause_main;
+    return arucotag_log;
 }
 
 
