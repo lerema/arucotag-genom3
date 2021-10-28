@@ -194,28 +194,45 @@ detect_main(const arucotag_frame *frame, float length,
     aruco::estimatePoseSingleMarkers(corners, length, calib->K, calib->D, rotations, translations);
 
     // Get state feedback
-    Mat W_t_B, W_R_B;
+    Mat W_p_B, W_R_B, W_q_B, Sigma_W_p_B, Sigma_W_q_B;
     if (!(drone->read(self) == genom_ok && drone->data(self)))
     {
         // Give default value if unable to read from port
         W_R_B = Mat::eye(3, 3, CV_32F);
-        W_t_B = Mat::zeros(3, 1, CV_32F);
+        W_p_B = Mat::zeros(3, 1, CV_32F);
+        Sigma_W_p_B = Mat::zeros(3, 3, CV_32F);
+        Sigma_W_q_B = Mat::zeros(4, 4, CV_32F);
     }
     else
     {
-        W_t_B = (Mat_<float>(3,1) <<
-            drone->data(self)->pos._value.x,
-            drone->data(self)->pos._value.y,
-            drone->data(self)->pos._value.z
+        or_pose_estimator_state* pom = drone->data(self);
+        W_p_B = (Mat_<float>(3,1) <<
+            pom->pos._value.x,
+            pom->pos._value.y,
+            pom->pos._value.z
         );
-        double qw = drone->data(self)->att._value.qw;
-        double qx = drone->data(self)->att._value.qx;
-        double qy = drone->data(self)->att._value.qy;
-        double qz = drone->data(self)->att._value.qz;
+        double qw = pom->att._value.qw;
+        double qx = pom->att._value.qx;
+        double qy = pom->att._value.qy;
+        double qz = pom->att._value.qz;
         W_R_B = (Mat_<float>(3,3) <<
             1 - 2*qy*qy - 2*qz*qz,     2*qx*qy - 2*qz*qw,     2*qx*qz + 2*qy*qw,
                 2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz,     2*qy*qz - 2*qx*qw,
                 2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy
+        );
+        W_q_B = (Mat_<float>(4,1) <<
+            qw, qx, qy, qz
+        );
+        Sigma_W_p_B = (Mat_<float>(3,3) <<
+            pom->pos_cov._value.cov[0], pom->pos_cov._value.cov[1], pom->pos_cov._value.cov[3],
+            pom->pos_cov._value.cov[1], pom->pos_cov._value.cov[2], pom->pos_cov._value.cov[4],
+            pom->pos_cov._value.cov[3], pom->pos_cov._value.cov[4], pom->pos_cov._value.cov[5]
+        );
+        Sigma_W_q_B = (Mat_<float>(4,4) <<
+            pom->att_cov._value.cov[0], pom->att_cov._value.cov[1], pom->att_cov._value.cov[3], pom->att_cov._value.cov[6],
+            pom->att_cov._value.cov[1], pom->att_cov._value.cov[2], pom->att_cov._value.cov[4], pom->att_cov._value.cov[7],
+            pom->att_cov._value.cov[3], pom->att_cov._value.cov[4], pom->att_cov._value.cov[5], pom->att_cov._value.cov[8],
+            pom->att_cov._value.cov[6], pom->att_cov._value.cov[7], pom->att_cov._value.cov[8], pom->att_cov._value.cov[9]
         );
     }
 
@@ -293,17 +310,12 @@ detect_main(const arucotag_frame *frame, float length,
                 orientation = C_R_M;
                 break;
             case 1:  // Body frame
-                std::cout << calib->B_p_C << std::endl;
                 position = calib->B_R_C * C_p_M + calib->B_p_C;
                 orientation = calib->B_R_C * C_R_M;
-                cov_pos = calib->B_R_C * cov_pos;
-                cov_rot = calib->B_R_C * cov_rot;
                 break;
             case 2:  // World frame
-                position = W_R_B * (calib->B_R_C * C_p_M + calib->B_p_C) + W_t_B;
+                position = W_R_B * (calib->B_R_C * C_p_M + calib->B_p_C) + W_p_B;
                 orientation = W_R_B * calib->B_R_C * C_R_M;
-                cov_pos = W_R_B * calib->B_R_C * cov_pos;
-                cov_rot = W_R_B * calib->B_R_C * cov_rot;
                 break;
         }
 
@@ -345,6 +357,35 @@ detect_main(const arucotag_frame *frame, float length,
         J_Tm1 = J_Tm1 * pow(qv_norm,3);
         // Propagation of covariance
         Mat cov_q = J_Tm1 * cov_rot * J_Tm1.t();
+
+        // Transform covariances to desired frame
+        switch (out_frame)
+        {
+            case 0:  // Camera frame
+                // no transformation needed
+                break;
+            case 1:  // Body frame
+                // we assume B_p_C and B_R_C perfectly known
+                cov_pos = calib->B_R_C * cov_pos * calib->B_R_C.t();
+                cov_rot = calib->B_R_C * cov_rot * calib->B_R_C.t();
+                break;
+            case 2:  // World frame
+                Mat B_p_M = calib->B_R_C * C_p_M + calib->B_p_C;
+                Mat B_p_M_skew = (Mat_<float>(3,3) <<
+                                     0, -B_p_M.at<float>(2),  B_p_M.at<float>(1),
+                    B_p_M.at<float>(2),                   0, -B_p_M.at<float>(0),
+                   -B_p_M.at<float>(1),  B_p_M.at<float>(0),                   0
+                );
+                float qw = W_q_B.at<float>(0);
+                Mat qv = W_q_B(Rect(0,1,1,3));
+                Mat J_R = Mat::zeros(3, 4, CV_32F);
+                J_R.col(0) = qw*B_p_M + qv.cross(B_p_M);
+                Mat tmp = qv.t()*B_p_M;
+                J_R(Rect(1,0,3,3)) = tmp.at<float>(0)*Mat::eye(3, 3, CV_32F) + qv*B_p_M.t() - B_p_M*qv.t() - qw*B_p_M_skew;
+                cov_pos = W_R_B * calib->B_R_C * cov_pos * calib->B_R_C.t() * W_R_B.t() + J_R * Sigma_W_q_B * J_R.t() + Sigma_W_p_B;
+                cov_rot = W_R_B * calib->B_R_C * cov_rot * calib->B_R_C.t() * W_R_B.t() + J_R * Sigma_W_q_B * J_R.t();
+                break;
+        }
 
         // Publish
         const char* portid = to_string(ids[i]).c_str(); // not using the id variable since it gets fucked up by calling Mat J_pix = ... for some reason
