@@ -455,6 +455,7 @@ detect_main(const arucotag_frame *frame, float length,
         );
 
         // Push found
+        (*tags)->valid_ids.push_back(ids[i]);
         (*tags)->meas.push_back((Mat_<float>(14,1) <<
             round(center.x),
             round(center.y),
