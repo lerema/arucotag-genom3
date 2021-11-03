@@ -624,6 +624,7 @@ detect_log(int16_t out_frame, const arucotag_detector *tags,
  *
  * Triggered by arucotag_start.
  * Yields to arucotag_ether.
+ * Throws arucotag_e_io.
  */
 genom_event
 add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
@@ -631,11 +632,18 @@ add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
            const arucotag_pixel_pose *pixel_pose,
            const genom_context self)
 {
-    // Add new marker in port list
+    // Check if marker is already in port list
     uint16_t i;
     for(i=0; i<ports->_length; i++)
-        if (!strcmp(ports->_buffer[i], marker)) return arucotag_ether;
+        if (!strcmp(ports->_buffer[i], marker))
+        {
+            arucotag_e_io_detail d;
+            snprintf(d.what, sizeof(d.what), "%s", "marker already tracked");
+            warnx("io error: %s", d.what);
+            return arucotag_e_io(&d,self);
+        }
 
+    // Add it
     if (i >= ports->_maximum)
         if (genom_sequence_reserve(ports, i + 1))
             return arucotag_e_sys_error("add", self);
@@ -663,6 +671,53 @@ add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
     pixel_pose->write(marker, self);
 
     warnx("tracking new marker: %s", marker);
+    return arucotag_ether;
+}
+
+
+/* --- Activity remove_marker ------------------------------------------- */
+
+/** Codel remove_marker of activity remove_marker.
+ *
+ * Triggered by arucotag_start.
+ * Yields to arucotag_ether.
+ * Throws arucotag_e_io.
+ */
+genom_event
+remove_marker(const char marker[16], sequence_arucotag_portinfo *ports,
+              const arucotag_pose *pose,
+              const arucotag_pixel_pose *pixel_pose,
+              const genom_context self)
+{
+    // Look for marker in port list
+    uint16_t i;
+    for(i=0; i<ports->_length; i++)
+        if (!strcmp(ports->_buffer[i], marker))
+            break;
+
+    // If marker not found, throw exception
+    if (i >= ports->_length)
+    {
+        arucotag_e_io_detail d;
+        snprintf(d.what, sizeof(d.what), "%s", "marker not tracked");
+        warnx("io error: %s", d.what);
+        return arucotag_e_io(&d,self);
+    }
+    // Otherwise, remove it:
+    else
+    {
+        // Move all following ports one step back in the array
+        for (uint16_t j=i; j<ports->_length; j++)
+            strncpy(ports->_buffer[j], ports->_buffer[j+1], 16);
+        // Remove last element of list
+        (ports->_length)--;
+    }
+
+    // Closing will cause poster closed when other components will try to read on the port
+    pixel_pose->close(marker, self);
+    pose->close(marker, self);
+
+    warnx("stop tracking marker: %s", marker);
     return arucotag_ether;
 }
 

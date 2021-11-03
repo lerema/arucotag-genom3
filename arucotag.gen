@@ -93,10 +93,19 @@ component arucotag {
 
     activity add_marker(in string<16> marker = : "Marker name") {
         task detect;
+        throw e_io;
         codel<start> add_marker(in marker, out ports, out pose, out pixel_pose)
             yield ether;
     };
 
+    activity remove_marker(in string<16> marker = : "Marker name") {
+        task detect;
+        throw e_io;
+        codel<start> remove_marker(in marker, out ports, out pose, out pixel_pose)
+            yield ether;
+    };
+
+    /* ---- Getters/Setters ----------------------------------------------- */
     activity set_calib() {
         task detect;
         doc "Read calibration from input ports and update internal matrices.";
@@ -105,7 +114,6 @@ component arucotag {
             yield ether;
     };
 
-    /* ---- Getters/Setters ----------------------------------------------- */
     attribute set_length(in length = : "Length of tags");
 
     attribute output_frame(in out_frame = 0: "desired output frame (0: camera; 1: body; 2: world)") {

@@ -262,10 +262,37 @@ a|.Inputs
 [disc]
  * `string<16>` `marker` Marker name
 
+a|.Throws
+[disc]
+ * `exception ::arucotag::e_io`
+ ** `string<128>` `what`
+
 a|.Context
 [disc]
   * In task `<<detect>>`
-  (frequency 1000.0 _Hz_)
+  * Updates port `<<pose>>`
+  * Updates port `<<pixel_pose>>`
+|===
+
+'''
+
+[[remove_marker]]
+=== remove_marker (activity)
+
+[role="small", width="50%", float="right", cols="1"]
+|===
+a|.Inputs
+[disc]
+ * `string<16>` `marker` Marker name
+
+a|.Throws
+[disc]
+ * `exception ::arucotag::e_io`
+ ** `string<128>` `what`
+
+a|.Context
+[disc]
+  * In task `<<detect>>`
   * Updates port `<<pose>>`
   * Updates port `<<pixel_pose>>`
 |===
@@ -285,7 +312,6 @@ a|.Throws
 a|.Context
 [disc]
   * In task `<<detect>>`
-  (frequency 1000.0 _Hz_)
   * Reads port `<<intrinsics>>`
   * Reads port `<<extrinsics>>`
 |===
