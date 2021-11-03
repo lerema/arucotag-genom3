@@ -90,7 +90,7 @@ detect_start(arucotag_ids *ids, const genom_context self)
 /** Codel detect_wait of task detect.
  *
  * Triggered by arucotag_wait.
- * Yields to arucotag_pause_wait, arucotag_main.
+ * Yields to arucotag_wait, arucotag_poll.
  */
 genom_event
 detect_wait(const arucotag_frame *frame,
@@ -98,23 +98,61 @@ detect_wait(const arucotag_frame *frame,
             const arucotag_extrinsics *extrinsics, float length,
             arucotag_calib **calib, const genom_context self)
 {
-    if (intrinsics->read(self) == genom_ok && intrinsics->data(self) &&
+    if (length > 0 &&
+        intrinsics->read(self) == genom_ok && intrinsics->data(self) &&
         extrinsics->read(self) == genom_ok && extrinsics->data(self) &&
         frame->read(self) == genom_ok && frame->data(self) &&
-        frame->data(self)->pixels._length > 0 &&
-        length > 0)
+        frame->data(self)->pixels._length > 0)
     {
         update_calib(intrinsics, extrinsics, calib, self);
-        return arucotag_main;
+        return arucotag_poll;
     }
-    return arucotag_pause_wait;
+    else
+    {
+        usleep(arucotag_pause_ms*1e3);
+        return arucotag_wait;
+    }
+}
+
+
+/** Codel detect_poll of task detect.
+ *
+ * Triggered by arucotag_poll.
+ * Yields to arucotag_pause_poll, arucotag_poll, arucotag_main.
+ */
+genom_event
+detect_poll(const sequence_arucotag_portinfo *ports,
+            const arucotag_frame *frame, or_time_ts *last_ts,
+            const genom_context self)
+{
+    if (!ports->_length)
+        return arucotag_pause_poll;
+
+    timeval start, stop;
+    gettimeofday(&start, NULL);
+
+    frame->read(self);
+    if (frame->data(self)->ts.sec != last_ts->sec || frame->data(self)->ts.nsec != last_ts->nsec)
+    {
+        *last_ts = frame->data(self)->ts;
+        return arucotag_main;
+
+    }
+    else
+    {
+        gettimeofday(&stop, NULL);
+        double dt_ms = (stop.tv_sec + stop.tv_usec*1e-6 - start.tv_sec - start.tv_usec*1e-6)*1e3;
+        if (dt_ms < arucotag_pause_ms)
+            usleep(arucotag_pause_ms - dt_ms);
+        return arucotag_poll;
+    }
 }
 
 
 /** Codel detect_main of task detect.
  *
  * Triggered by arucotag_main.
- * Yields to arucotag_pause_main, arucotag_log.
+ * Yields to arucotag_poll, arucotag_log.
  */
 genom_event
 detect_main(const arucotag_frame *frame, float length,
@@ -125,10 +163,6 @@ detect_main(const arucotag_frame *frame, float length,
             const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
             const genom_context self)
 {
-    // Sleep if no marker is tracked
-    if (!ports->_length) return arucotag_pause_main;
-
-    frame->read(self);
     or_sensor_frame* fdata = frame->data(self);
 
     // Convert frame to cv::Mat
@@ -164,7 +198,7 @@ detect_main(const arucotag_frame *frame, float length,
             pixel_pose->data(ports->_buffer[i], self)->pix._present = false;
             pixel_pose->write(ports->_buffer[i], self);
         }
-        return arucotag_pause_main;
+        return arucotag_poll;
     }
     else
     {
@@ -486,7 +520,7 @@ detect_main(const arucotag_frame *frame, float length,
 
     // If none of the detected tags is tracked, stop, otherwise log
     if (!(*tags)->valid_ids.size())
-        return arucotag_pause_main;
+        return arucotag_poll;
     else
         return arucotag_log;
 }
@@ -495,7 +529,7 @@ detect_main(const arucotag_frame *frame, float length,
 /** Codel detect_log of task detect.
  *
  * Triggered by arucotag_log.
- * Yields to arucotag_pause_main.
+ * Yields to arucotag_poll.
  */
 genom_event
 detect_log(int16_t out_frame, const arucotag_detector *tags,
@@ -580,7 +614,7 @@ detect_log(int16_t out_frame, const arucotag_detector *tags,
             (*log)->skipped = false;
         }
     }
-    return arucotag_pause_main;
+    return arucotag_poll;
 }
 
 

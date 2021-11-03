@@ -66,25 +66,29 @@ component arucotag {
         calib calib;
         detector tags;
 
+        or::time::ts last_ts;
         sequence<portinfo> ports;
         log_s log;
     };
 
+    const unsigned short pause_ms = 1; // pause between frame polling in ms
+
     /* ---- Main task ----------------------------------------------------- */
     task detect {
-        period 30 ms;
-
         codel<start> detect_start(out ::ids)
             yield wait;
 
         codel<wait> detect_wait(in frame, in intrinsics, in extrinsics, in length, out calib)
-            yield pause::wait, main;
+            yield wait, poll;
+
+        codel<poll> detect_poll(in ports, in frame, inout last_ts)
+            yield pause::poll, poll, main;
 
         codel<main> detect_main(in frame, in length, in calib, in drone, out tags, in ports, out pose, out pixel_pose, in out_frame)
-            yield pause::main, log;
+            yield poll, log;
 
         codel<log> detect_log(in out_frame, in tags, inout log)
-            yield pause::main;
+            yield poll;
     };
 
     activity add_marker(in string<16> marker = : "Marker name") {
