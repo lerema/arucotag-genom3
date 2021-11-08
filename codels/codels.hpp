@@ -30,6 +30,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/aruco.hpp>
+#include <eigen3/Eigen/Dense>
 
 #include <iostream>
 #include <sys/time.h>
@@ -40,12 +41,14 @@
 
 using namespace std;
 using namespace cv;
+using namespace Eigen;
 
-struct  arucotag_calib {
-    Mat K = Mat::zeros(Size(3,3), CV_32F);
+struct arucotag_calib {
+    Matrix3d K = Matrix3d::Zero();
+    Mat K_cv = Mat::zeros(Size(3,3), CV_32F);
     Mat D = Mat::zeros(Size(1,5), CV_32F);
-    Mat B_R_C = Mat::eye(Size(3,3), CV_32F);
-    Mat B_p_C = Mat::zeros(Size(1,3), CV_32F);
+    Vector3d B_p_C = Vector3d::Zero();
+    Matrix3d B_R_C = Matrix3d::Identity();
 };
 
 

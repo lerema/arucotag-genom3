@@ -26,6 +26,7 @@
 #include "arucotag_c_types.h"
 
 #include "codels.hpp"
+#include <opencv2/core/eigen.hpp>
 
 #include <string.h>
 #include <cmath>
@@ -37,11 +38,12 @@ void update_calib(const arucotag_intrinsics *intrinsics,
 {
     // Init intr
     or_sensor_calibration* c = &(intrinsics->data(self)->calib);
-    (*calib)->K = (Mat_<float>(3,3) <<
+    (*calib)->K_cv = (Mat_<float>(3,3) <<
         c->fx, c->gamma, c->cx,
             0,    c->fy, c->cy,
             0,        0,     1
     );
+    cv2eigen((*calib)->K_cv, (*calib)->K);
     (*calib)->D = (Mat_<float>(5,1) <<
         intrinsics->data(self)->disto.k1,
         intrinsics->data(self)->disto.k2,
@@ -50,19 +52,17 @@ void update_calib(const arucotag_intrinsics *intrinsics,
         intrinsics->data(self)->disto.p2
     );
     // Init extr
-    (*calib)->B_p_C = (Mat_<float>(3,1) <<
+    (*calib)->B_p_C <<
         extrinsics->data(self)->trans.tx,
         extrinsics->data(self)->trans.ty,
-        extrinsics->data(self)->trans.tz
-    );
+        extrinsics->data(self)->trans.tz;
     float r = extrinsics->data(self)->rot.roll;
     float p = extrinsics->data(self)->rot.pitch;
     float y = extrinsics->data(self)->rot.yaw;
-    (*calib)->B_R_C = (Mat_<float>(3,3) <<
+    (*calib)->B_R_C <<
         cos(p)*cos(y), sin(r)*sin(p)*cos(y) - cos(r)*sin(y), cos(r)*sin(p)*cos(y) + sin(r)*sin(y),
         cos(p)*sin(y), sin(r)*sin(p)*sin(y) + cos(r)*cos(y), cos(r)*sin(p)*sin(y) - sin(r)*cos(y),
-              -sin(p),                        sin(r)*cos(p),                        cos(r)*cos(p)
-    );
+              -sin(p),                        sin(r)*cos(p),                        cos(r)*cos(p);
 }
 
 /* --- Task detect ------------------------------------------------------ */
@@ -225,49 +225,37 @@ detect_main(const arucotag_frame *frame, float length,
 
     // Estimate pose from corners
     vector<Vec3d> translations, rotations;
-    aruco::estimatePoseSingleMarkers(corners, length, calib->K, calib->D, rotations, translations);
+    aruco::estimatePoseSingleMarkers(corners, length, calib->K_cv, calib->D, rotations, translations);
 
     // Get state feedback
-    Mat W_p_B, W_R_B, W_q_B, Sigma_W_p_B, Sigma_W_q_B;
+    Vector3d W_p_B;
+    Matrix3d W_R_B;
+    Quaterniond W_q_B;
+    Matrix3d S_W_p_B;
+    Matrix4d S_W_q_B;
     if (!(drone->read(self) == genom_ok && drone->data(self)))
     {
         // Give default value if unable to read from port
-        W_R_B = Mat::eye(3, 3, CV_32F);
-        W_p_B = Mat::zeros(3, 1, CV_32F);
-        Sigma_W_p_B = Mat::zeros(3, 3, CV_32F);
-        Sigma_W_q_B = Mat::zeros(4, 4, CV_32F);
+        W_p_B = Vector3d::Zero();
+        W_R_B = Matrix3d::Identity();
+        S_W_p_B = Matrix3d::Zero();
+        S_W_q_B = Matrix4d::Zero();
     }
     else
     {
         or_pose_estimator_state* pom = drone->data(self);
-        W_p_B = (Mat_<float>(3,1) <<
-            pom->pos._value.x,
-            pom->pos._value.y,
-            pom->pos._value.z
-        );
-        double qw = pom->att._value.qw;
-        double qx = pom->att._value.qx;
-        double qy = pom->att._value.qy;
-        double qz = pom->att._value.qz;
-        W_R_B = (Mat_<float>(3,3) <<
-            1 - 2*qy*qy - 2*qz*qz,     2*qx*qy - 2*qz*qw,     2*qx*qz + 2*qy*qw,
-                2*qx*qy + 2*qz*qw, 1 - 2*qx*qx - 2*qz*qz,     2*qy*qz - 2*qx*qw,
-                2*qx*qz - 2*qy*qw,     2*qy*qz + 2*qx*qw, 1 - 2*qx*qx - 2*qy*qy
-        );
-        W_q_B = (Mat_<float>(4,1) <<
-            qw, qx, qy, qz
-        );
-        Sigma_W_p_B = (Mat_<float>(3,3) <<
+        W_p_B << pom->pos._value.x, pom->pos._value.y, pom->pos._value.z;
+        W_q_B = Quaterniond(pom->att._value.qw, pom->att._value.qx, pom->att._value.qy, pom->att._value.qz);
+        W_R_B = W_q_B;
+        S_W_p_B <<
             pom->pos_cov._value.cov[0], pom->pos_cov._value.cov[1], pom->pos_cov._value.cov[3],
             pom->pos_cov._value.cov[1], pom->pos_cov._value.cov[2], pom->pos_cov._value.cov[4],
-            pom->pos_cov._value.cov[3], pom->pos_cov._value.cov[4], pom->pos_cov._value.cov[5]
-        );
-        Sigma_W_q_B = (Mat_<float>(4,4) <<
+            pom->pos_cov._value.cov[3], pom->pos_cov._value.cov[4], pom->pos_cov._value.cov[5];
+        S_W_q_B <<
             pom->att_cov._value.cov[0], pom->att_cov._value.cov[1], pom->att_cov._value.cov[3], pom->att_cov._value.cov[6],
             pom->att_cov._value.cov[1], pom->att_cov._value.cov[2], pom->att_cov._value.cov[4], pom->att_cov._value.cov[7],
             pom->att_cov._value.cov[3], pom->att_cov._value.cov[4], pom->att_cov._value.cov[5], pom->att_cov._value.cov[8],
-            pom->att_cov._value.cov[6], pom->att_cov._value.cov[7], pom->att_cov._value.cov[8], pom->att_cov._value.cov[9]
-        );
+            pom->att_cov._value.cov[6], pom->att_cov._value.cov[7], pom->att_cov._value.cov[8], pom->att_cov._value.cov[9];
     }
 
     // Discard previous detections
@@ -286,57 +274,56 @@ detect_main(const arucotag_frame *frame, float length,
         if (j >= ports->_length) continue;
 
         // Get translation and rotation
-        Mat C_p_M = (Mat_<float>(3,1) << translations[i][0], translations[i][1], translations[i][2]);
-        Mat C_R_M = Mat::zeros(3,3, CV_32F);
-        Rodrigues(rotations[i], C_R_M); // This call converts C_R_M in doubles
-        C_R_M.convertTo(C_R_M, CV_32F);
+        Vector3d C_p_M(translations[i][0], translations[i][1], translations[i][2]);
+        Mat tmp = Mat::zeros(3,3, CV_64F);
+        Rodrigues(rotations[i], tmp);
+        Matrix3d C_R_M;
+        cv2eigen(tmp, C_R_M);
 
         // Compute covariance
         // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
-        Mat J = Mat::zeros(8,6, CV_32F);    // Jacobian of f^-1
-        float sigma_p = 3;                  // Arbitrary isotropic pixel error
+        float sigma_p = 3;              // Arbitrary isotropic pixel error
+        Matrix<double,8,6> J;           // Jacobian of f^-1
 
-        Mat c = (Mat_<float>(3,4) <<        // Coordinates of corners in marker frame
+        Matrix<double,3,4> c; c <<      // Coordinates of corners in marker frame
             -1,  1,  1, -1,
             -1, -1,  1,  1,
-             0,  0,  0,  0
-        );
+             0,  0,  0,  0;
         c = c * length/2;
+
         for (uint16_t i=0; i<4; i++)
         {
-            Mat ci = c.col(i);
-            Mat hi = calib->K*(C_R_M*ci + C_p_M);
+            Vector3d ci = c.col(i);
+            Vector3d hi = calib->K * (C_R_M * ci + C_p_M);
             // Jacobian of pixellization (homogeneous->pixel) operation wrt homogeneous coordinates
-            Mat J_pix = (Mat_<float>(2,3) <<
-                1/hi.at<float>(2), 0, -hi.at<float>(0)/hi.at<float>(2)/hi.at<float>(2),
-                0, 1/hi.at<float>(2), -hi.at<float>(1)/hi.at<float>(2)/hi.at<float>(2)
-            );
+            Matrix<double,2,3> J_pix; J_pix <<
+                1/hi(2), 0, -hi(0)/hi(2)/hi(2),
+                0, 1/hi(2), -hi(1)/hi(2)/hi(2);
             // Jacobian of projection
-            Mat J_proj = Mat::zeros(3,6, CV_32F);
+            Matrix<double,3,6> J_proj;
             // Jacobian of projection wrt translation
-            calib->K.copyTo(J_proj(Rect(0,0,3,3)));
+            J_proj.block(0,0,3,3) = calib->K;
             // Jacobian of projection wrt rotation
-            Mat skew = (Mat_<float>(3,3) <<
-                              0, -ci.at<float>(2),  ci.at<float>(1),
-                ci.at<float>(2),                0, -ci.at<float>(0),
-               -ci.at<float>(1),  ci.at<float>(0),                0
-            );
-            J_proj(Rect(3,0,3,3)) = -calib->K * C_R_M * skew;
+            Matrix3d skew; skew <<
+                    0 , -ci(2),  ci(1),
+                 ci(2),     0 , -ci(0),
+                -ci(1),  ci(0),     0 ;
+            J_proj.block(0,3,3,3) = -calib->K * C_R_M * skew;
             // Jacobian of projection wrt euclidean coordinates (chain rule)
-            Mat J_full = J_pix*J_proj;
+            Matrix<double,2,6> J_full = J_pix*J_proj;
             // Stack in J
-            J_full.copyTo(J(Rect(0,i*2,6,2)));
+            J.block(i*2,0,2,6) = J_full;
         }
 
         // First order propagation
         // Cross (pos/rot) covariance is neglected since I dunno how to transform it into quaterion covariance
-        Mat cov = sigma_p*sigma_p * (J.t() * J).inv();
-        Mat cov_pos, cov_rot;
-        cov(Rect(0,0,3,3)).copyTo(cov_pos);
-        cov(Rect(3,3,3,3)).copyTo(cov_rot);
+        Matrix<double,6,6> cov = sigma_p*sigma_p * (J.transpose() * J).inverse();
+        Matrix3d cov_pos = cov.block(0,0,3,3);
+        Matrix3d cov_rot = cov.block(3,3,3,3);
 
-        // Transform to desired frame
-        Mat position, orientation;
+        // Transform to desired frame and propagate covariance
+        Vector3d position;
+        Quaterniond orientation;
         switch (out_frame)
         {
             case 0:  // Camera frame
@@ -346,120 +333,87 @@ detect_main(const arucotag_frame *frame, float length,
             case 1:  // Body frame
                 position = calib->B_R_C * C_p_M + calib->B_p_C;
                 orientation = calib->B_R_C * C_R_M;
+                cov_pos = calib->B_R_C * cov_pos * calib->B_R_C.transpose();
+                cov_rot = calib->B_R_C * cov_rot * calib->B_R_C.transpose();
                 break;
             case 2:  // World frame
-                position = W_R_B * (calib->B_R_C * C_p_M + calib->B_p_C) + W_p_B;
+                Vector3d B_p_M = calib->B_R_C * C_p_M + calib->B_p_C;
+                position = W_R_B * B_p_M + W_p_B;
                 orientation = W_R_B * calib->B_R_C * C_R_M;
+                // Propagate to body frame
+                cov_pos = calib->B_R_C * cov_pos * calib->B_R_C.transpose();
+                cov_rot = calib->B_R_C * cov_rot * calib->B_R_C.transpose();
+                // Propagate to world frame
+                // The jacobian of the transformation wrt the quaternion W_q_B is given by Eq. 174 from [Solà 2017], see Sec. 4.3.2 therein
+                // Available at: https://arxiv.org/abs/1711.02508
+                Matrix3d B_p_M_skew; B_p_M_skew <<
+                           0 , -B_p_M(2),  B_p_M(1),
+                     B_p_M(2),        0 , -B_p_M(0),
+                    -B_p_M(1),  B_p_M(0),        0 ;
+                Matrix<double,3,4> J_R;
+                J_R.col(0) = 2* (W_q_B.w()*B_p_M + W_q_B.vec().cross(B_p_M));
+                J_R.block(0,1,3,3) = 2* ((W_q_B.vec().transpose() * B_p_M)(0) * Matrix3d::Identity() + W_q_B.vec() * B_p_M.transpose() - W_q_B.vec() * B_p_M.transpose() - W_q_B.w() * B_p_M_skew);
+                cov_pos = W_R_B * cov_pos * W_R_B.transpose() + J_R * S_W_q_B * J_R.transpose() + S_W_p_B;
+                cov_rot = W_R_B * cov_rot * W_R_B.transpose() + J_R * S_W_q_B * J_R.transpose();
                 break;
         }
 
-        // Convert rotation to quaternion
-        // Equations taken from [Robotics (Siciliano), p. 55]
-        float& r11 = orientation.at<float>(0,0);
-        float& r12 = orientation.at<float>(0,1);
-        float& r13 = orientation.at<float>(0,2);
-        float& r21 = orientation.at<float>(1,0);
-        float& r22 = orientation.at<float>(1,1);
-        float& r23 = orientation.at<float>(1,2);
-        float& r31 = orientation.at<float>(2,0);
-        float& r32 = orientation.at<float>(2,1);
-        float& r33 = orientation.at<float>(2,2);
-
-        float qw = 0.5 * sqrt(max(1 + r11 + r22 + r33, 0.f));   // Use max(-,0) to prevent numerical issues with sqrt
-        float qx = (r32 - r23 < 0) ? -0.5 * sqrt(max(r11 - r22 - r33 + 1, 0.f)) : 0.5 * sqrt(max(r11 - r22 - r33 + 1, 0.f));
-        float qy = (r13 - r31 < 0) ? -0.5 * sqrt(max(r22 - r33 - r11 + 1, 0.f)) : 0.5 * sqrt(max(r22 - r33 - r11 + 1, 0.f));
-        float qz = (r21 - r12 < 0) ? -0.5 * sqrt(max(r33 - r11 - r22 + 1, 0.f)) : 0.5 * sqrt(max(r33 - r11 - r22 + 1, 0.f));
-
-        // Convert rotation covariance accordingly
-        float qv_norm = sqrt(qx*qx + qy*qy + qz*qz);
-        float theta = 2*atan2(qv_norm, qw);
-        Mat J_T = Mat::zeros(3,4, CV_32F);    // Jacobian of T: q -> theta*u ; 1/qv_norm^3 is extracted out of the matrix to avoid numerical issue before inversion
-        J_T.at<float>(0,0) = 2*pow(qv_norm,3)*qx/(qw*qw+qv_norm*qv_norm);
-        J_T.at<float>(1,0) = 2*pow(qv_norm,3)*qy/(qw*qw+qv_norm*qv_norm);
-        J_T.at<float>(2,0) = 2*pow(qv_norm,3)*qz/(qw*qw+qv_norm*qv_norm);
-        J_T.at<float>(0,1) = pow(qv_norm,2)*theta + pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T.at<float>(1,1) = pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T.at<float>(2,1) = pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T.at<float>(0,2) = pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T.at<float>(1,2) = pow(qv_norm,2)*theta + pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T.at<float>(2,2) = pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T.at<float>(0,3) = pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T.at<float>(1,3) = pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T.at<float>(2,3) = pow(qv_norm,2)*theta + pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        Mat J_Tm1;  // Jacobian of T^-1: theta*u -> q
-        invert(J_T, J_Tm1, DECOMP_SVD); // SVD handles pseudo-inversion of rectangular matrices
+        // Convert rotation covariance (i.e. element of SO(3)) to quaternion covariance (i.e. element of R^4)
+        // We consider the Jacobian of the inverse transformation T: q -> theta*u which is easier to compute
+        // 1/qv_norm^3 is extracted out of the matrix to avoid numerical issue before (pseudo-)inversion, and reintegrated afterward
+        Matrix<double,3,4> J_T; // Jacobian of T
+        double qw = orientation.w();
+        double qx = orientation.x();
+        double qy = orientation.y();
+        double qz = orientation.z();
+        double qv_norm = orientation.vec().norm();
+        double theta = 2*atan2(qv_norm, qw);
+        J_T(0,0) = 2*pow(qv_norm,3)*qx/(qw*qw+qv_norm*qv_norm);
+        J_T(1,0) = 2*pow(qv_norm,3)*qy/(qw*qw+qv_norm*qv_norm);
+        J_T(2,0) = 2*pow(qv_norm,3)*qz/(qw*qw+qv_norm*qv_norm);
+        J_T(0,1) = pow(qv_norm,2)*theta + pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T(1,1) = pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T(2,1) = pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T(0,2) = pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T(1,2) = pow(qv_norm,2)*theta + pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T(2,2) = pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T(0,3) = pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T(1,3) = pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T(2,3) = pow(qv_norm,2)*theta + pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        Matrix<double,4,3> J_Tm1; // Jacobian of T^-1: theta*u -> q
+        JacobiSVD<Matrix<double,3,4>> svd(J_T, ComputeThinU | ComputeThinV);
+        double tolerance = std::numeric_limits<double>::epsilon() * std::max(J_T.cols(), J_T.rows()) *svd.singularValues().array().abs()(0);
+        J_Tm1 = svd.matrixV() * (svd.singularValues().array().abs() > tolerance).select(svd.singularValues().array().inverse(), 0).matrix().asDiagonal() * svd.matrixU().adjoint();
         J_Tm1 = J_Tm1 * pow(qv_norm,3);
         // Propagation of covariance
-        Mat cov_q = J_Tm1 * cov_rot * J_Tm1.t();
-
-        // Transform covariances to desired frame
-        switch (out_frame)
-        {
-            case 0:  // Camera frame
-                // no transformation needed
-                break;
-            case 1:  // Body frame
-                // we assume B_p_C and B_R_C perfectly known
-                cov_pos = calib->B_R_C * cov_pos * calib->B_R_C.t();
-                cov_rot = calib->B_R_C * cov_rot * calib->B_R_C.t();
-                break;
-            case 2:  // World frame
-                Mat B_p_M = calib->B_R_C * C_p_M + calib->B_p_C;
-                Mat B_p_M_skew = (Mat_<float>(3,3) <<
-                                     0, -B_p_M.at<float>(2),  B_p_M.at<float>(1),
-                    B_p_M.at<float>(2),                   0, -B_p_M.at<float>(0),
-                   -B_p_M.at<float>(1),  B_p_M.at<float>(0),                   0
-                );
-                float qw = W_q_B.at<float>(0);
-                Mat qv = W_q_B(Rect(0,1,1,3));
-                Mat J_R = Mat::zeros(3, 4, CV_32F);
-                J_R.col(0) = qw*B_p_M + qv.cross(B_p_M);
-                Mat tmp = qv.t()*B_p_M;
-                J_R(Rect(1,0,3,3)) = tmp.at<float>(0)*Mat::eye(3, 3, CV_32F) + qv*B_p_M.t() - B_p_M*qv.t() - qw*B_p_M_skew;
-                cov_pos = W_R_B * calib->B_R_C * cov_pos * calib->B_R_C.t() * W_R_B.t() + J_R * Sigma_W_q_B * J_R.t() + Sigma_W_p_B;
-                cov_rot = W_R_B * calib->B_R_C * cov_rot * calib->B_R_C.t() * W_R_B.t() + J_R * Sigma_W_q_B * J_R.t();
-                break;
-        }
+        Matrix4d cov_q = J_Tm1 * cov_rot * J_Tm1.transpose();
 
         // Publish
         const char* portid = to_string(ids[i]).c_str(); // not using the id variable since it gets fucked up by calling Mat J_pix = ... for some reason
-        pose->data(portid, self)->pos._present = true;
-        pose->data(portid, self)->pos_cov._present = true;
-        pose->data(portid, self)->att._present = true;
-        pose->data(portid, self)->att_cov._present = true;
-        // pose->data(portid, self)->att_pos_cov._present = false;
 
-        pose->data(portid, self)->pos._value =
-        {
-            position.at<float>(0),
-            position.at<float>(1),
-            position.at<float>(2)
-        };
+        pose->data(portid, self)->pos._present = true;
+        pose->data(portid, self)->pos._value.x = position(0);
+        pose->data(portid, self)->pos._value.y = position(1);
+        pose->data(portid, self)->pos._value.z = position(2);
+        pose->data(portid, self)->att._present = true;
+        pose->data(portid, self)->att._value.qw = orientation.w();
+        pose->data(portid, self)->att._value.qx = orientation.x();
+        pose->data(portid, self)->att._value.qy = orientation.y();
+        pose->data(portid, self)->att._value.qz = orientation.z();
+        pose->data(portid, self)->pos_cov._present = true;
         pose->data(portid, self)->pos_cov._value =
         {
-            cov_pos.at<float>(0,0),
-            cov_pos.at<float>(1,0),
-            cov_pos.at<float>(1,1),
-            cov_pos.at<float>(2,0),
-            cov_pos.at<float>(2,1),
-            cov_pos.at<float>(2,2)
+            cov_pos(0,0),
+            cov_pos(1,0), cov_pos(1,1),
+            cov_pos(2,0), cov_pos(2,1), cov_pos(2,2)
         };
-        pose->data(portid, self)->att._value =
-        {
-            qw, qx, qy, qz
-        };
+        pose->data(portid, self)->att_cov._present = true;
         pose->data(portid, self)->att_cov._value =
         {
-            cov_q.at<float>(0,0),
-            cov_q.at<float>(1,0),
-            cov_q.at<float>(1,1),
-            cov_q.at<float>(2,0),
-            cov_q.at<float>(2,1),
-            cov_q.at<float>(2,2),
-            cov_q.at<float>(3,0),
-            cov_q.at<float>(3,1),
-            cov_q.at<float>(3,2),
-            cov_q.at<float>(3,3)
+            cov_q(0,0),
+            cov_q(1,0), cov_q(1,1),
+            cov_q(2,0), cov_q(2,1), cov_q(2,2),
+            cov_q(3,0), cov_q(3,1), cov_q(3,2), cov_q(3,3)
         };
 
         timeval tv;
@@ -482,7 +436,7 @@ detect_main(const arucotag_frame *frame, float length,
 
         // Save for logs
         // Convert quaternion to roll/pitch/yaw
-        Mat rpy = (Mat_<float>(3,1) <<
+        Vector3d rpy(
             atan2(2 * (qw*qx + qy*qz), 1 - 2 * (qx*qx + qy*qy)),
             asin(2 * (qw*qy - qz*qx)),
             atan2(2 * (qw*qz + qx*qy), 1 - 2 * (qy*qy + qz*qz))
@@ -493,28 +447,28 @@ detect_main(const arucotag_frame *frame, float length,
         (*tags)->meas.push_back((Mat_<float>(14,1) <<
             round(center.x),
             round(center.y),
-            position.at<float>(0),
-            position.at<float>(1),
-            position.at<float>(2),
-            rpy.at<float>(0),
-            rpy.at<float>(1),
-            rpy.at<float>(2),
-            cov_pos.at<float>(0,0),
-            cov_pos.at<float>(1,0),
-            cov_pos.at<float>(1,1),
-            cov_pos.at<float>(2,0),
-            cov_pos.at<float>(2,1),
-            cov_pos.at<float>(2,2),
-            cov_q.at<float>(0,0),
-            cov_q.at<float>(1,0),
-            cov_q.at<float>(1,1),
-            cov_q.at<float>(2,0),
-            cov_q.at<float>(2,1),
-            cov_q.at<float>(2,2),
-            cov_q.at<float>(3,0),
-            cov_q.at<float>(3,1),
-            cov_q.at<float>(3,2),
-            cov_q.at<float>(3,3)
+            position(0),
+            position(1),
+            position(2),
+            rpy(0),
+            rpy(1),
+            rpy(2),
+            cov_pos(0,0),
+            cov_pos(1,0),
+            cov_pos(1,1),
+            cov_pos(2,0),
+            cov_pos(2,1),
+            cov_pos(2,2),
+            cov_q(0,0),
+            cov_q(1,0),
+            cov_q(1,1),
+            cov_q(2,0),
+            cov_q(2,1),
+            cov_q(2,2),
+            cov_q(3,0),
+            cov_q(3,1),
+            cov_q(3,2),
+            cov_q(3,3)
         ));
     }
 
