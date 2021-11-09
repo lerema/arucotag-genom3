@@ -340,7 +340,7 @@ a|.Inputs
 |===
 a|.Inputs
 [disc]
- * `unsigned short` `s_pix` Pixel covariance of corners of the tags
+ * `unsigned short` `s_pix` Isotropic pixel covariance of corners of the tags
 
 |===
 
