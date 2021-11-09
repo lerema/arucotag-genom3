@@ -264,15 +264,11 @@ detect_main(const arucotag_frame *frame, float length,
     vector<vector<Point2f>> corners;
     aruco::detectMarkers(cvframe, tags->dict, corners, ids);
 
-    if (ids.size() == 0)
-    {
-        // Publish empty message for all ports if no tag is detected
-        for (uint16_t i=0; i<ports->_length; i++)
+    // Publish empty messages for tags that are not detected
+    for (uint16_t i=0; i<ports->_length; i++)
+        if (find(ids.begin(), ids.end(), std::stoi(ports->_buffer[i])) == ids.end())
         {
-            timeval tv;
-            gettimeofday(&tv, NULL);
-            pose->data(ports->_buffer[i], self)->ts.sec = tv.tv_sec;
-            pose->data(ports->_buffer[i], self)->ts.nsec = tv.tv_usec*1000;
+            pose->data(ports->_buffer[i], self)->ts = fdata->ts;
             pose->data(ports->_buffer[i], self)->pos._present = false;
             pose->data(ports->_buffer[i], self)->pos_cov._present = false;
             pose->data(ports->_buffer[i], self)->att._present = false;
@@ -284,30 +280,10 @@ detect_main(const arucotag_frame *frame, float length,
             pixel_pose->data(ports->_buffer[i], self)->pix._present = false;
             pixel_pose->write(ports->_buffer[i], self);
         }
-        return arucotag_poll;
-    }
-    else
-    {
-        // Publish empty message for tags that are not detected
-        for (uint16_t i=0; i<ports->_length; i++)
-            if (find(ids.begin(), ids.end(), std::stoi(ports->_buffer[i])) == ids.end())
-            {
-                timeval tv;
-                gettimeofday(&tv, NULL);
-                pose->data(ports->_buffer[i], self)->ts.sec = tv.tv_sec;
-                pose->data(ports->_buffer[i], self)->ts.nsec = tv.tv_usec*1000;
-                pose->data(ports->_buffer[i], self)->pos._present = false;
-                pose->data(ports->_buffer[i], self)->pos_cov._present = false;
-                pose->data(ports->_buffer[i], self)->att._present = false;
-                pose->data(ports->_buffer[i], self)->att_cov._present = false;
-                pose->data(ports->_buffer[i], self)->att_pos_cov._present = false;
-                pose->write(ports->_buffer[i], self);
 
-                pixel_pose->data(ports->_buffer[i], self)->ts = pose->data(ports->_buffer[i], self)->ts;
-                pixel_pose->data(ports->_buffer[i], self)->pix._present = false;
-                pixel_pose->write(ports->_buffer[i], self);
-            }
-    }
+    // Sleep if no detection was made
+    if (ids.size() == 0)
+        return arucotag_poll;
 
     // Estimate pose from corners
     vector<Vec3d> translations, rotations;
@@ -479,6 +455,8 @@ detect_main(const arucotag_frame *frame, float length,
         // Publish
         const char* tagid = to_string(ids[i]).c_str(); // not using the id variable since it gets fucked up by calling Mat J_pix = ... for some reason
 
+        pose->data(tagid, self)->ts = fdata->ts;
+
         pose->data(tagid, self)->pos._present = true;
         pose->data(tagid, self)->pos._value.x = position(0);
         pose->data(tagid, self)->pos._value.y = position(1);
@@ -504,10 +482,6 @@ detect_main(const arucotag_frame *frame, float length,
             cov_q(3,0), cov_q(3,1), cov_q(3,2), cov_q(3,3)
         };
 
-        timeval tv;
-        gettimeofday(&tv, NULL);
-        pose->data(tagid, self)->ts.sec = tv.tv_sec;
-        pose->data(tagid, self)->ts.nsec = tv.tv_usec*1000;
         pose->write(tagid, self);
 
         // Compute centroid of tag in pixel coordinates
