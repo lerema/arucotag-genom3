@@ -381,10 +381,16 @@ detect_main(const arucotag_frame *frame, float length,
         J_T(1,3) = pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
         J_T(2,3) = pow(qv_norm,2)*theta + pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
         Matrix<double,4,3> J_Tm1; // Jacobian of T^-1: theta*u -> q
-        JacobiSVD<Matrix<double,3,4>> svd(J_T, ComputeThinU | ComputeThinV);
-        double tolerance = std::numeric_limits<double>::epsilon() * std::max(J_T.cols(), J_T.rows()) *svd.singularValues().array().abs()(0);
-        J_Tm1 = svd.matrixV() * (svd.singularValues().array().abs() > tolerance).select(svd.singularValues().array().inverse(), 0).matrix().asDiagonal() * svd.matrixU().adjoint();
+        Mat J_tmp;
+        eigen2cv(J_T, J_tmp); // Switch to opencv for pseudoinversion because eigen is shit
+        invert(J_tmp, J_tmp, DECOMP_SVD); // SVD handles pseudoinversion of rectangular matrices
+        cv2eigen(J_tmp, J_Tm1);
         J_Tm1 = J_Tm1 * pow(qv_norm,3);
+        // Potential workaround here is to declare J_T as a dynamic sized matrix (otherwise ComputeThinU will complain) and use the following lines:
+        //  JacobiSVD<Matrix<double,3,4>> svd(J_T, ComputeThinU | ComputeThinV);
+        //  double tolerance = std::numeric_limits<double>::epsilon() * std::max(J_T.cols(), J_T.rows()) *svd.singularValues().array().abs()(0);
+        //  J_Tm1 = svd.matrixV() * (svd.singularValues().array().abs() > tolerance).select(svd.singularValues().array().inverse(), 0).matrix().asDiagonal() * svd.matrixU().adjoint();
+
         // Propagation of covariance
         Matrix4d cov_q = J_Tm1 * cov_rot * J_Tm1.transpose();
 
