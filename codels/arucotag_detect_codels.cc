@@ -65,6 +65,92 @@ void update_calib(const arucotag_intrinsics *intrinsics,
               -sin(p),                        sin(r)*cos(p),                        cos(r)*cos(p);
 }
 
+
+static void arucotag_log_f(arucotag_log_s** log, int16_t out_frame, const char* tagid, int16_t u, int16_t v, or_pose_estimator_state* posedata)
+{
+    if (*log)
+    {
+        if ((*log)->req.aio_fildes >= 0)
+        {
+            (*log)->total++;
+            if ((*log)->total % (*log)->decimation == 0)
+                if ((*log)->pending)
+                {
+                    if (aio_error(&(*log)->req) != EINPROGRESS)
+                    {
+                        (*log)->pending = false;
+                        if (aio_return(&(*log)->req) <= 0)
+                        {
+                            warn("log");
+                            close((*log)->req.aio_fildes);
+                            (*log)->req.aio_fildes = -1;
+                        }
+                    }
+                    else
+                    {
+                        (*log)->skipped = true;
+                        (*log)->missed++;
+                    }
+                }
+        }
+        if ((*log)->req.aio_fildes >= 0 && !(*log)->pending)
+        {
+            // Convert quaternion to roll/pitch/yaw
+            double qw = posedata->att._value.qw;
+            double qx = posedata->att._value.qx;
+            double qy = posedata->att._value.qy;
+            double qz = posedata->att._value.qz;
+
+            double roll = atan2(2 * (qw*qx + qy*qz), 1 - 2 * (qx*qx + qy*qy));
+            double pitch = asin(2 * (qw*qy - qz*qx));
+            double yaw = atan2(2 * (qw*qz + qx*qy), 1 - 2 * (qy*qy + qz*qz));
+
+            (*log)->req.aio_nbytes = snprintf(
+                (*log)->buffer, sizeof((*log)->buffer),
+                "%s" arucotag_log_fmt "\n",
+                (*log)->skipped ? "\n" : "",
+                posedata->ts.sec, posedata->ts.nsec,
+                out_frame,                  // frame
+                tagid,
+                u, v,                       // pixel
+                posedata->pos._value.x,     // p
+                posedata->pos._value.y,
+                posedata->pos._value.z,
+                roll,                       // att (euler)
+                pitch,
+                yaw,
+                posedata->pos_cov._value.cov[0], // Sigma_p
+                posedata->pos_cov._value.cov[1],
+                posedata->pos_cov._value.cov[2],
+                posedata->pos_cov._value.cov[3],
+                posedata->pos_cov._value.cov[4],
+                posedata->pos_cov._value.cov[5],
+                posedata->att_cov._value.cov[0], // Sigma_q
+                posedata->att_cov._value.cov[1],
+                posedata->att_cov._value.cov[2],
+                posedata->att_cov._value.cov[3],
+                posedata->att_cov._value.cov[4],
+                posedata->att_cov._value.cov[5],
+                posedata->att_cov._value.cov[6],
+                posedata->att_cov._value.cov[7],
+                posedata->att_cov._value.cov[8],
+                posedata->att_cov._value.cov[9]
+            );
+
+            if (aio_write(&(*log)->req))
+            {
+                warn("log");
+                close((*log)->req.aio_fildes);
+                (*log)->req.aio_fildes = -1;
+            }
+            else
+                (*log)->pending = true;
+            (*log)->skipped = false;
+        }
+    }
+}
+
+
 /* --- Task detect ------------------------------------------------------ */
 
 
@@ -152,16 +238,16 @@ detect_poll(const sequence_arucotag_portinfo *ports,
 /** Codel detect_main of task detect.
  *
  * Triggered by arucotag_main.
- * Yields to arucotag_poll, arucotag_log.
+ * Yields to arucotag_poll.
  */
 genom_event
 detect_main(const arucotag_frame *frame, float length,
             const arucotag_calib *calib, const arucotag_drone *drone,
-            arucotag_detector **tags,
+            const arucotag_detector *tags,
             const sequence_arucotag_portinfo *ports,
             const arucotag_pose *pose,
             const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
-            const genom_context self)
+            arucotag_log_s **log, const genom_context self)
 {
     or_sensor_frame* fdata = frame->data(self);
 
@@ -176,7 +262,7 @@ detect_main(const arucotag_frame *frame, float length,
     // Detect tags in frame
     vector<int> ids;
     vector<vector<Point2f>> corners;
-    aruco::detectMarkers(cvframe, (*tags)->dict, corners, ids);
+    aruco::detectMarkers(cvframe, tags->dict, corners, ids);
 
     if (ids.size() == 0)
     {
@@ -257,10 +343,6 @@ detect_main(const arucotag_frame *frame, float length,
             pom->att_cov._value.cov[3], pom->att_cov._value.cov[4], pom->att_cov._value.cov[5], pom->att_cov._value.cov[8],
             pom->att_cov._value.cov[6], pom->att_cov._value.cov[7], pom->att_cov._value.cov[8], pom->att_cov._value.cov[9];
     }
-
-    // Discard previous detections
-    (*tags)->valid_ids.clear();
-    (*tags)->meas.clear();
 
     // Process detected tags
     for (uint16_t i=0; i<ids.size(); i++)
@@ -395,26 +477,26 @@ detect_main(const arucotag_frame *frame, float length,
         Matrix4d cov_q = J_Tm1 * cov_rot * J_Tm1.transpose();
 
         // Publish
-        const char* portid = to_string(ids[i]).c_str(); // not using the id variable since it gets fucked up by calling Mat J_pix = ... for some reason
+        const char* tagid = to_string(ids[i]).c_str(); // not using the id variable since it gets fucked up by calling Mat J_pix = ... for some reason
 
-        pose->data(portid, self)->pos._present = true;
-        pose->data(portid, self)->pos._value.x = position(0);
-        pose->data(portid, self)->pos._value.y = position(1);
-        pose->data(portid, self)->pos._value.z = position(2);
-        pose->data(portid, self)->att._present = true;
-        pose->data(portid, self)->att._value.qw = orientation.w();
-        pose->data(portid, self)->att._value.qx = orientation.x();
-        pose->data(portid, self)->att._value.qy = orientation.y();
-        pose->data(portid, self)->att._value.qz = orientation.z();
-        pose->data(portid, self)->pos_cov._present = true;
-        pose->data(portid, self)->pos_cov._value =
+        pose->data(tagid, self)->pos._present = true;
+        pose->data(tagid, self)->pos._value.x = position(0);
+        pose->data(tagid, self)->pos._value.y = position(1);
+        pose->data(tagid, self)->pos._value.z = position(2);
+        pose->data(tagid, self)->att._present = true;
+        pose->data(tagid, self)->att._value.qw = orientation.w();
+        pose->data(tagid, self)->att._value.qx = orientation.x();
+        pose->data(tagid, self)->att._value.qy = orientation.y();
+        pose->data(tagid, self)->att._value.qz = orientation.z();
+        pose->data(tagid, self)->pos_cov._present = true;
+        pose->data(tagid, self)->pos_cov._value =
         {
             cov_pos(0,0),
             cov_pos(1,0), cov_pos(1,1),
             cov_pos(2,0), cov_pos(2,1), cov_pos(2,2)
         };
-        pose->data(portid, self)->att_cov._present = true;
-        pose->data(portid, self)->att_cov._value =
+        pose->data(tagid, self)->att_cov._present = true;
+        pose->data(tagid, self)->att_cov._value =
         {
             cov_q(0,0),
             cov_q(1,0), cov_q(1,1),
@@ -424,9 +506,9 @@ detect_main(const arucotag_frame *frame, float length,
 
         timeval tv;
         gettimeofday(&tv, NULL);
-        pose->data(portid, self)->ts.sec = tv.tv_sec;
-        pose->data(portid, self)->ts.nsec = tv.tv_usec*1000;
-        pose->write(portid, self);
+        pose->data(tagid, self)->ts.sec = tv.tv_sec;
+        pose->data(tagid, self)->ts.nsec = tv.tv_usec*1000;
+        pose->write(tagid, self);
 
         // Compute centroid of tag in pixel coordinates
         Point2f center(0, 0);
@@ -434,11 +516,11 @@ detect_main(const arucotag_frame *frame, float length,
             center += corners[i][p];
         center = center / 4.;
 
-        pixel_pose->data(portid, self)->ts = pose->data(portid, self)->ts;
-        pixel_pose->data(portid, self)->pix._present = true;
-        pixel_pose->data(portid, self)->pix._value.x = round(center.x);
-        pixel_pose->data(portid, self)->pix._value.y = round(center.y);
-        pixel_pose->write(portid, self);
+        pixel_pose->data(tagid, self)->ts = pose->data(tagid, self)->ts;
+        pixel_pose->data(tagid, self)->pix._present = true;
+        pixel_pose->data(tagid, self)->pix._value.x = round(center.x);
+        pixel_pose->data(tagid, self)->pix._value.y = round(center.y);
+        pixel_pose->write(tagid, self);
 
         // Save for logs
         // Convert quaternion to roll/pitch/yaw
@@ -448,132 +530,10 @@ detect_main(const arucotag_frame *frame, float length,
             atan2(2 * (qw*qz + qx*qy), 1 - 2 * (qy*qy + qz*qz))
         );
 
-        // Push found
-        (*tags)->valid_ids.push_back(ids[i]);
-        (*tags)->meas.push_back((Mat_<float>(14,1) <<
-            round(center.x),
-            round(center.y),
-            position(0),
-            position(1),
-            position(2),
-            rpy(0),
-            rpy(1),
-            rpy(2),
-            cov_pos(0,0),
-            cov_pos(1,0),
-            cov_pos(1,1),
-            cov_pos(2,0),
-            cov_pos(2,1),
-            cov_pos(2,2),
-            cov_q(0,0),
-            cov_q(1,0),
-            cov_q(1,1),
-            cov_q(2,0),
-            cov_q(2,1),
-            cov_q(2,2),
-            cov_q(3,0),
-            cov_q(3,1),
-            cov_q(3,2),
-            cov_q(3,3)
-        ));
+        // Log
+        arucotag_log_f(log, out_frame, tagid, round(center.x), round(center.y), pose->data(tagid, self));
     }
 
-    // If none of the detected tags is tracked, stop, otherwise log
-    if (!(*tags)->valid_ids.size())
-        return arucotag_poll;
-    else
-        return arucotag_log;
-}
-
-
-/** Codel detect_log of task detect.
- *
- * Triggered by arucotag_log.
- * Yields to arucotag_poll.
- */
-genom_event
-detect_log(int16_t out_frame, const arucotag_detector *tags,
-           arucotag_log_s **log, const genom_context self)
-{
-    if (*log)
-    {
-        if ((*log)->req.aio_fildes >= 0)
-        {
-            (*log)->total++;
-            if ((*log)->total % (*log)->decimation == 0)
-                if ((*log)->pending)
-                {
-                    if (aio_error(&(*log)->req) != EINPROGRESS)
-                    {
-                        (*log)->pending = false;
-                        if (aio_return(&(*log)->req) <= 0)
-                        {
-                            warn("log");
-                            close((*log)->req.aio_fildes);
-                            (*log)->req.aio_fildes = -1;
-                        }
-                    }
-                    else
-                    {
-                        (*log)->skipped = true;
-                        (*log)->missed++;
-                    }
-                }
-        }
-        if ((*log)->req.aio_fildes >= 0 && !(*log)->pending)
-        {
-            timeval tv;
-            gettimeofday(&tv, NULL);
-            char buffer[512];
-            (*log)->req.aio_nbytes = 0;
-            for (uint16_t i=0; i<tags->valid_ids.size(); i++)
-            {
-                (*log)->req.aio_nbytes += snprintf(
-                    buffer, sizeof(buffer),
-                    "%s" arucotag_log_fmt "\n",
-                    (*log)->skipped ? "\n" : "",
-                    tv.tv_sec, tv.tv_usec*1000,
-                    out_frame,
-                    tags->valid_ids[i],
-                    tags->meas[i].at<float>(0), // pixel
-                    tags->meas[i].at<float>(1),
-                    tags->meas[i].at<float>(2), // p
-                    tags->meas[i].at<float>(3),
-                    tags->meas[i].at<float>(4),
-                    tags->meas[i].at<float>(5), // att (euler)
-                    tags->meas[i].at<float>(6),
-                    tags->meas[i].at<float>(7),
-                    tags->meas[i].at<float>(8), // Sigma_p
-                    tags->meas[i].at<float>(9),
-                    tags->meas[i].at<float>(10),
-                    tags->meas[i].at<float>(11),
-                    tags->meas[i].at<float>(12),
-                    tags->meas[i].at<float>(13),
-                    tags->meas[i].at<float>(14), // Sigma_q
-                    tags->meas[i].at<float>(15),
-                    tags->meas[i].at<float>(16),
-                    tags->meas[i].at<float>(17),
-                    tags->meas[i].at<float>(18),
-                    tags->meas[i].at<float>(19),
-                    tags->meas[i].at<float>(20),
-                    tags->meas[i].at<float>(21),
-                    tags->meas[i].at<float>(22),
-                    tags->meas[i].at<float>(23)
-                );
-                if (i==0) strcpy((*log)->buffer, buffer);
-                else      strcat((*log)->buffer, buffer);
-            }
-            if (aio_write(&(*log)->req))
-            {
-                warn("log");
-                close((*log)->req.aio_fildes);
-                (*log)->req.aio_fildes = -1;
-            }
-            else
-                (*log)->pending = true;
-            (*log)->skipped = false;
-        }
-    }
     return arucotag_poll;
 }
 

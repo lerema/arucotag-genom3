@@ -54,8 +54,6 @@ struct arucotag_calib {
 
 struct arucotag_detector {
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250); // TODO give choice of dictionary
-    vector<int> valid_ids;
-    vector<Mat> meas;
 };
 
 
@@ -73,8 +71,8 @@ struct arucotag_log_s {
     # define arucotag_log_header                                            \
         "ts frame i px py x y z roll pitch yaw sxx sxy syy sxz syz szz sqww sqwx sqxx sqwy sqxy sqyy sqwz sqxz sqyz sqzz "
     # define arucotag_log_fmt                                               \
-        "%ld.%09ld %i %i "                                                  \
-        arucotag_logfmt arucotag_logfmt                                     \
+        "%d.%09d %i %s "                                                    \
+        "%d %d "                                                             \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
