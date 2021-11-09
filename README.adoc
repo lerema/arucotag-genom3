@@ -333,6 +333,19 @@ a|.Inputs
 
 '''
 
+[[set_pix_cov]]
+=== set_pix_cov (attribute)
+
+[role="small", width="50%", float="right", cols="1"]
+|===
+a|.Inputs
+[disc]
+ * `unsigned short` `s_pix` Pixel covariance of corners of the tags
+
+|===
+
+'''
+
 [[output_frame]]
 === output_frame (attribute)
 

@@ -163,7 +163,8 @@ genom_event
 detect_start(arucotag_ids *ids, const genom_context self)
 {
     // Init IDS fields
-    ids->length = 0;
+    ids->tag_info.length = 0;
+    ids->tag_info.s_pix = 3;
     ids->out_frame = 0;
     ids->calib = new arucotag_calib();
     ids->tags = new arucotag_detector();
@@ -241,7 +242,8 @@ detect_poll(const sequence_arucotag_portinfo *ports,
  * Yields to arucotag_poll.
  */
 genom_event
-detect_main(const arucotag_frame *frame, float length,
+detect_main(const arucotag_frame *frame,
+            const arucotag_ids_tag_info_s *tag_info,
             const arucotag_calib *calib, const arucotag_drone *drone,
             const arucotag_detector *tags,
             const sequence_arucotag_portinfo *ports,
@@ -287,7 +289,7 @@ detect_main(const arucotag_frame *frame, float length,
 
     // Estimate pose from corners
     vector<Vec3d> translations, rotations;
-    aruco::estimatePoseSingleMarkers(corners, length, calib->K_cv, calib->D, rotations, translations);
+    aruco::estimatePoseSingleMarkers(corners, tag_info->length, calib->K_cv, calib->D, rotations, translations);
 
     // Get state feedback
     Vector3d W_p_B;
@@ -340,14 +342,13 @@ detect_main(const arucotag_frame *frame, float length,
 
         // Compute covariance
         // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
-        float sigma_p = 3;              // Arbitrary isotropic pixel error
         Matrix<double,8,6> J;           // Jacobian of f^-1
 
         Matrix<double,3,4> c; c <<      // Coordinates of corners in marker frame
             -1,  1,  1, -1,
             -1, -1,  1,  1,
              0,  0,  0,  0;
-        c = c * length/2;
+        c = c * tag_info->length/2;
 
         for (uint16_t i=0; i<4; i++)
         {
@@ -375,7 +376,7 @@ detect_main(const arucotag_frame *frame, float length,
 
         // First order propagation
         // Cross (pos/rot) covariance is neglected since I dunno how to transform it into quaterion covariance
-        Matrix<double,6,6> cov = sigma_p*sigma_p * (J.transpose() * J).inverse();
+        Matrix<double,6,6> cov = tag_info->s_pix*tag_info->s_pix * (J.transpose() * J).inverse();
         Matrix3d cov_pos = cov.block(0,0,3,3);
         Matrix3d cov_rot = cov.block(3,3,3,3);
 

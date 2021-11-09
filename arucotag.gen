@@ -60,8 +60,11 @@ component arucotag {
 
     /* ---- IDS ----------------------------------------------------------- */
     ids {
-        float length;
         short out_frame;
+        struct tag_info_s {
+            float length;
+            unsigned short s_pix; // arbitrary isotropic pixel variance for tag corners
+        } tag_info;
 
         calib calib;
         detector tags;
@@ -78,13 +81,13 @@ component arucotag {
         codel<start> detect_start(out ::ids)
             yield wait;
 
-        codel<wait> detect_wait(in frame, in intrinsics, in extrinsics, in length, out calib)
+        codel<wait> detect_wait(in frame, in intrinsics, in extrinsics, in tag_info.length, out calib)
             yield wait, poll;
 
         codel<poll> detect_poll(in ports, in frame, inout last_ts)
             yield pause::poll, poll, main;
 
-        codel<main> detect_main(in frame, in length, in calib, in drone, in tags, in ports, out pose, out pixel_pose, in out_frame, inout log)
+        codel<main> detect_main(in frame, in tag_info, in calib, in drone, in tags, in ports, out pose, out pixel_pose, in out_frame, inout log)
             yield poll;
     };
 
@@ -111,7 +114,9 @@ component arucotag {
             yield ether;
     };
 
-    attribute set_length(in length = : "Length of tags");
+    attribute set_length(in tag_info.length = : "Length of tags");
+
+    attribute set_pix_cov(in tag_info.s_pix = : "Isotropic pixel covariance of corners of the tags");
 
     attribute output_frame(in out_frame = 0: "desired output frame (0: camera; 1: body; 2: world)") {
         doc "Sets the frame in which the output coordinates are expressed.";
