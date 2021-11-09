@@ -66,7 +66,7 @@ void update_calib(const arucotag_intrinsics *intrinsics,
 }
 
 
-static void arucotag_log_f(arucotag_log_s** log, int16_t out_frame, const char* tagid, int16_t u, int16_t v, or_pose_estimator_state* posedata)
+void arucotag_log_f(arucotag_log_s** log, int16_t out_frame, const char* tagid, int16_t u, int16_t v, or_pose_estimator_state* posedata)
 {
     if (*log)
     {
