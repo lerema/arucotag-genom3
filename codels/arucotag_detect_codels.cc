@@ -335,10 +335,11 @@ detect_main(const arucotag_frame *frame,
 
         // Get translation and rotation
         Vector3d C_p_M(translations[i][0], translations[i][1], translations[i][2]);
-        Mat tmp = Mat::zeros(3,3, CV_64F);
-        Rodrigues(rotations[i], tmp);
-        Matrix3d C_R_M;
-        cv2eigen(tmp, C_R_M);
+        Vector3d tmp(rotations[i][0], rotations[i][1], rotations[i][2]);
+        AngleAxisd C_aa_M;
+        C_aa_M.angle() = tmp.norm();
+        C_aa_M.axis() = tmp.normalized();
+        Matrix3d C_R_M(C_aa_M);
 
         // Compute covariance
         // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
@@ -375,7 +376,7 @@ detect_main(const arucotag_frame *frame,
         }
 
         // First order propagation
-        // Cross (pos/rot) covariance is neglected since I dunno how to transform it into quaterion covariance
+        // Cross (pos/rot) covariance is neglected since I dunno how to transform it into pos/quat covariance
         Matrix<double,6,6> cov = tag_info->s_pix*tag_info->s_pix * (J.transpose() * J).inverse();
         Matrix3d cov_pos = cov.block(0,0,3,3);
         Matrix3d cov_rot = cov.block(3,3,3,3);
