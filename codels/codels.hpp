@@ -72,7 +72,7 @@ struct arucotag_log_s {
         "ts frame i px py x y z roll pitch yaw sxx sxy syy sxz syz szz sqww sqwx sqxx sqwy sqxy sqyy sqwz sqxz sqyz sqzz "
     # define arucotag_log_fmt                                               \
         "%d.%09d %i %s "                                                    \
-        "%d %d "                                                             \
+        "%d %d "                                                            \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \

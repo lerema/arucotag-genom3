@@ -254,12 +254,29 @@ detect_main(const arucotag_frame *frame,
     or_sensor_frame* fdata = frame->data(self);
 
     // Convert frame to cv::Mat
-    Mat cvframe = Mat(
-        Size(fdata->width, fdata->height),
-        (fdata->bpp == 1) ? CV_8UC1 : CV_8UC3,
-        (void*)fdata->pixels._buffer,
-        Mat::AUTO_STEP
-    );
+    Mat cvframe;
+    if (fdata->compressed)
+    {
+        std::vector<uint8_t> buf;
+        buf.assign(fdata->pixels._buffer, fdata->pixels._buffer + fdata->pixels._length);
+        imdecode(buf, IMREAD_UNCHANGED, &cvframe);
+    }
+    else
+    {
+        int type;
+        if      (fdata->bpp == 1) type = CV_8UC1;
+        else if (fdata->bpp == 2) type = CV_16UC1;
+        else if (fdata->bpp == 3) type = CV_8UC3;
+        else if (fdata->bpp == 4) type = CV_8UC4;
+        else return arucotag_poll;
+
+        cvframe = Mat(
+            Size(fdata->width, fdata->height),
+            type,
+            fdata->pixels._buffer,
+            Mat::AUTO_STEP
+        );
+    }
 
     // Detect tags in frame
     vector<int> ids;
