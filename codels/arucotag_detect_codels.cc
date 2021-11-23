@@ -259,7 +259,7 @@ detect_main(const arucotag_frame *frame,
     {
         std::vector<uint8_t> buf;
         buf.assign(fdata->pixels._buffer, fdata->pixels._buffer + fdata->pixels._length);
-        imdecode(buf, IMREAD_UNCHANGED, &cvframe);
+        imdecode(buf, IMREAD_GRAYSCALE, &cvframe);
     }
     else
     {
