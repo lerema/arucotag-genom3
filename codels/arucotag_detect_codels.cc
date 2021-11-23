@@ -219,7 +219,7 @@ detect_poll(const sequence_arucotag_portinfo *ports,
     gettimeofday(&start, NULL);
 
     frame->read(self);
-    if (frame->data(self)->ts.sec != last_ts->sec || frame->data(self)->ts.nsec != last_ts->nsec)
+    if (frame->data(self)->ts.nsec != last_ts->nsec || frame->data(self)->ts.sec != last_ts->sec)
     {
         *last_ts = frame->data(self)->ts;
         return arucotag_main;
