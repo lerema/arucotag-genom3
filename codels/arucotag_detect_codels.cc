@@ -429,7 +429,7 @@ detect_main(const arucotag_frame *frame,
                     -B_p_M(1),  B_p_M(0),        0 ;
                 Matrix<double,3,4> J_R;
                 J_R.col(0) = 2* (W_q_B.w()*B_p_M + W_q_B.vec().cross(B_p_M));
-                J_R.block(0,1,3,3) = 2* ((W_q_B.vec().transpose() * B_p_M)(0) * Matrix3d::Identity() + W_q_B.vec() * B_p_M.transpose() - W_q_B.vec() * B_p_M.transpose() - W_q_B.w() * B_p_M_skew);
+                J_R.block(0,1,3,3) = 2* ((W_q_B.vec().transpose() * B_p_M)(0) * Matrix3d::Identity() + W_q_B.vec() * B_p_M.transpose() - B_p_M * W_q_B.vec().transpose() - W_q_B.w() * B_p_M_skew);
                 cov_pos = W_R_B * cov_pos * W_R_B.transpose() + J_R * S_W_q_B * J_R.transpose() + S_W_p_B;
                 cov_rot = W_R_B * cov_rot * W_R_B.transpose() + J_R * S_W_q_B * J_R.transpose();
                 break;
