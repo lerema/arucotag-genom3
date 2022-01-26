@@ -573,10 +573,21 @@ add_marker(const char marker[16], sequence_arucotag_portinfo *ports,
 
     pose->data(marker, self)->ts.sec = tv.tv_sec;
     pose->data(marker, self)->ts.nsec = tv.tv_usec*1000;
+    pose->data(marker, self)->intrinsic = false;
     pose->data(marker, self)->pos._present = false;
     pose->data(marker, self)->pos_cov._present = false;
     pose->data(marker, self)->att._present = false;
     pose->data(marker, self)->att_cov._present = false;
+    pose->data(marker, self)->att_pos_cov._present = false;
+    pose->data(marker, self)->vel._present = false;
+    pose->data(marker, self)->vel_cov._present = false;
+    pose->data(marker, self)->avel._present = false;
+    pose->data(marker, self)->avel_cov._present = false;
+    pose->data(marker, self)->acc._present = false;
+    pose->data(marker, self)->acc_cov._present = false;
+    pose->data(marker, self)->aacc._present = false;
+    pose->data(marker, self)->aacc_cov._present = false;
+
     pose->write(marker, self);
 
     pixel_pose->data(marker, self)->ts = pose->data(marker, self)->ts;
