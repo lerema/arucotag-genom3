@@ -87,7 +87,10 @@ component arucotag {
         codel<poll> detect_poll(in ports, in frame, inout last_ts)
             yield pause::poll, poll, main;
 
-        codel<main> detect_main(in frame, in tag_info, in calib, in drone, in tags, in ports, out pose, out pixel_pose, in out_frame, inout log)
+        codel<main> detect_main(in frame, in tag_info, in calib, in drone, inout tags, in ports, out pose, out pixel_pose, in out_frame, inout log)
+            yield poll, log;
+
+        codel<log> detect_log(in tags, in ports, in pose, in pixel_pose, in out_frame, inout log)
             yield poll;
     };
 

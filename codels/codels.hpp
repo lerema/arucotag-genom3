@@ -54,6 +54,7 @@ struct arucotag_calib {
 
 struct arucotag_detector {
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250); // TODO give choice of dictionary
+    vector<int> ids;    // ids of detected tags
 };
 
 

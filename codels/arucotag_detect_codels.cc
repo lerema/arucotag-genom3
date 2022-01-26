@@ -66,91 +66,6 @@ void update_calib(const arucotag_intrinsics *intrinsics,
 }
 
 
-void arucotag_log_f(arucotag_log_s** log, int16_t out_frame, const char* tagid, int16_t u, int16_t v, or_pose_estimator_state* posedata)
-{
-    if (*log)
-    {
-        if ((*log)->req.aio_fildes >= 0)
-        {
-            (*log)->total++;
-            if ((*log)->total % (*log)->decimation == 0)
-                if ((*log)->pending)
-                {
-                    if (aio_error(&(*log)->req) != EINPROGRESS)
-                    {
-                        (*log)->pending = false;
-                        if (aio_return(&(*log)->req) <= 0)
-                        {
-                            warn("log");
-                            close((*log)->req.aio_fildes);
-                            (*log)->req.aio_fildes = -1;
-                        }
-                    }
-                    else
-                    {
-                        (*log)->skipped = true;
-                        (*log)->missed++;
-                    }
-                }
-        }
-        if ((*log)->req.aio_fildes >= 0 && !(*log)->pending)
-        {
-            // Convert quaternion to roll/pitch/yaw
-            double qw = posedata->att._value.qw;
-            double qx = posedata->att._value.qx;
-            double qy = posedata->att._value.qy;
-            double qz = posedata->att._value.qz;
-
-            double roll = atan2(2 * (qw*qx + qy*qz), 1 - 2 * (qx*qx + qy*qy));
-            double pitch = asin(2 * (qw*qy - qz*qx));
-            double yaw = atan2(2 * (qw*qz + qx*qy), 1 - 2 * (qy*qy + qz*qz));
-
-            (*log)->req.aio_nbytes = snprintf(
-                (*log)->buffer, sizeof((*log)->buffer),
-                "%s" arucotag_log_fmt "\n",
-                (*log)->skipped ? "\n" : "",
-                posedata->ts.sec, posedata->ts.nsec,
-                out_frame,                  // frame
-                tagid,
-                u, v,                       // pixel
-                posedata->pos._value.x,     // p
-                posedata->pos._value.y,
-                posedata->pos._value.z,
-                roll,                       // att (euler)
-                pitch,
-                yaw,
-                posedata->pos_cov._value.cov[0], // Sigma_p
-                posedata->pos_cov._value.cov[1],
-                posedata->pos_cov._value.cov[2],
-                posedata->pos_cov._value.cov[3],
-                posedata->pos_cov._value.cov[4],
-                posedata->pos_cov._value.cov[5],
-                posedata->att_cov._value.cov[0], // Sigma_q
-                posedata->att_cov._value.cov[1],
-                posedata->att_cov._value.cov[2],
-                posedata->att_cov._value.cov[3],
-                posedata->att_cov._value.cov[4],
-                posedata->att_cov._value.cov[5],
-                posedata->att_cov._value.cov[6],
-                posedata->att_cov._value.cov[7],
-                posedata->att_cov._value.cov[8],
-                posedata->att_cov._value.cov[9]
-            );
-
-            if (aio_write(&(*log)->req))
-            {
-                warn("log");
-                close((*log)->req.aio_fildes);
-                (*log)->req.aio_fildes = -1;
-            }
-            else
-                (*log)->pending = true;
-            (*log)->skipped = false;
-        }
-    }
-}
-
-
 /* --- Task detect ------------------------------------------------------ */
 
 
@@ -168,7 +83,6 @@ detect_start(arucotag_ids *ids, const genom_context self)
     ids->out_frame = 0;
     ids->calib = new arucotag_calib();
     ids->tags = new arucotag_detector();
-    ids->log = new arucotag_log_s();
 
     return arucotag_wait;
 }
@@ -239,13 +153,13 @@ detect_poll(const sequence_arucotag_portinfo *ports,
 /** Codel detect_main of task detect.
  *
  * Triggered by arucotag_main.
- * Yields to arucotag_poll.
+ * Yields to arucotag_log.
  */
 genom_event
 detect_main(const arucotag_frame *frame,
             const arucotag_ids_tag_info_s *tag_info,
             const arucotag_calib *calib, const arucotag_drone *drone,
-            const arucotag_detector *tags,
+            arucotag_detector **tags,
             const sequence_arucotag_portinfo *ports,
             const arucotag_pose *pose,
             const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
@@ -279,13 +193,12 @@ detect_main(const arucotag_frame *frame,
     }
 
     // Detect tags in frame
-    vector<int> ids;
     vector<vector<Point2f>> corners;
-    aruco::detectMarkers(cvframe, tags->dict, corners, ids);
+    aruco::detectMarkers(cvframe, (*tags)->dict, corners, (*tags)->ids);
 
     // Publish empty messages for tags that are not detected
     for (uint16_t i=0; i<ports->_length; i++)
-        if (find(ids.begin(), ids.end(), std::stoi(ports->_buffer[i])) == ids.end())
+        if (find((*tags)->ids.begin(), (*tags)->ids.end(), std::stoi(ports->_buffer[i])) == (*tags)->ids.end())
         {
             pose->data(ports->_buffer[i], self)->ts = fdata->ts;
             pose->data(ports->_buffer[i], self)->pos._present = false;
@@ -301,7 +214,7 @@ detect_main(const arucotag_frame *frame,
         }
 
     // Sleep if no detection was made
-    if (ids.size() == 0)
+    if ((*tags)->ids.size() == 0)
         return arucotag_poll;
 
     // Estimate pose from corners
@@ -340,12 +253,12 @@ detect_main(const arucotag_frame *frame,
     }
 
     // Process detected tags
-    for (uint16_t i=0; i<ids.size(); i++)
+    for (uint16_t i=0; i<(*tags)->ids.size(); i++)
     {
         // Check that detected tags are among tracked markers
         uint16_t j = 0;
         for (j=0; j<ports->_length; j++)
-            if (!strcmp(ports->_buffer[j], to_string(ids[i]).c_str()))
+            if (!strcmp(ports->_buffer[j], to_string((*tags)->ids[i]).c_str()))
                 break;
         if (j >= ports->_length) continue;
 
@@ -471,7 +384,7 @@ detect_main(const arucotag_frame *frame,
         Matrix4d cov_q = J_Tm1 * cov_rot * J_Tm1.transpose();
 
         // Publish
-        const char* tagid = to_string(ids[i]).c_str();
+        const char* tagid = to_string((*tags)->ids[i]).c_str();
 
         pose->data(tagid, self)->ts = fdata->ts;
 
@@ -513,17 +426,120 @@ detect_main(const arucotag_frame *frame,
         pixel_pose->data(tagid, self)->pix._value.x = round(center.x);
         pixel_pose->data(tagid, self)->pix._value.y = round(center.y);
         pixel_pose->write(tagid, self);
+    }
 
-        // Save for logs
-        // Convert quaternion to roll/pitch/yaw
-        Vector3d rpy(
-            atan2(2 * (qw*qx + qy*qz), 1 - 2 * (qx*qx + qy*qy)),
-            asin(2 * (qw*qy - qz*qx)),
-            atan2(2 * (qw*qz + qx*qy), 1 - 2 * (qy*qy + qz*qz))
-        );
+    return arucotag_log;
+}
 
-        // Log
-        arucotag_log_f(log, out_frame, tagid, round(center.x), round(center.y), pose->data(tagid, self));
+
+/** Codel detect_log of task detect.
+ *
+ * Triggered by arucotag_log.
+ * Yields to arucotag_poll.
+ */
+genom_event
+detect_log(const arucotag_detector *tags,
+           const sequence_arucotag_portinfo *ports,
+           const arucotag_pose *pose,
+           const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
+           arucotag_log_s **log, const genom_context self)
+{
+    if (*log)
+    {
+        if ((*log)->req.aio_fildes >= 0)
+        {
+            (*log)->total++;
+            if ((*log)->total % (*log)->decimation == 0)
+                if ((*log)->pending)
+                {
+                    if (aio_error(&(*log)->req) != EINPROGRESS)
+                    {
+                        (*log)->pending = false;
+                        if (aio_return(&(*log)->req) <= 0)
+                        {
+                            warn("log");
+                            close((*log)->req.aio_fildes);
+                            (*log)->req.aio_fildes = -1;
+                        }
+                    }
+                    else
+                    {
+                        (*log)->skipped = true;
+                        (*log)->missed++;
+                    }
+                }
+        }
+        if ((*log)->req.aio_fildes >= 0 && !(*log)->pending)
+        {
+            uint32_t n = snprintf((*log)->buffer, sizeof((*log)->buffer), "%s", "");
+            for (uint16_t i=0; i<tags->ids.size(); i++)
+            {
+                // Check that detected tags are among tracked markers
+                const char* tagid = to_string(tags->ids[i]).c_str();
+                uint16_t j = 0;
+                for (j=0; j<ports->_length; j++)
+                    if (!strcmp(ports->_buffer[j], tagid))
+                        break;
+                if (j >= ports->_length) continue;
+
+                or_pose_estimator_state* posedata = pose->data(tagid, self);
+
+                // roll/pitch/yaw conversion
+                double qw = posedata->att._value.qw;
+                double qx = posedata->att._value.qx;
+                double qy = posedata->att._value.qy;
+                double qz = posedata->att._value.qz;
+                double roll = atan2(2 * (qw*qx + qy*qz), 1 - 2 * (qx*qx + qy*qy));
+                double pitch = asin(2 * (qw*qy - qz*qx));
+                double yaw = atan2(2 * (qw*qz + qx*qy), 1 - 2 * (qy*qy + qz*qz));
+
+                char buffer[1024];
+                n += snprintf(
+                    buffer, sizeof(buffer),
+                    "%s" arucotag_log_fmt "\n",
+                    (*log)->skipped ? "\n" : "",
+                    posedata->ts.sec, posedata->ts.nsec,
+                    out_frame,                                      // frame
+                    tagid,                                          // tag id
+                    pixel_pose->data(tagid, self)->pix._value.x,
+                    pixel_pose->data(tagid, self)->pix._value.y,    // pixel
+                    posedata->pos._value.x,                         // p
+                    posedata->pos._value.y,
+                    posedata->pos._value.z,
+                    roll,                                           // att (euler)
+                    pitch,
+                    yaw,
+                    posedata->pos_cov._value.cov[0],                // Sigma_p
+                    posedata->pos_cov._value.cov[1],
+                    posedata->pos_cov._value.cov[2],
+                    posedata->pos_cov._value.cov[3],
+                    posedata->pos_cov._value.cov[4],
+                    posedata->pos_cov._value.cov[5],
+                    posedata->att_cov._value.cov[0],                // Sigma_q
+                    posedata->att_cov._value.cov[1],
+                    posedata->att_cov._value.cov[2],
+                    posedata->att_cov._value.cov[3],
+                    posedata->att_cov._value.cov[4],
+                    posedata->att_cov._value.cov[5],
+                    posedata->att_cov._value.cov[6],
+                    posedata->att_cov._value.cov[7],
+                    posedata->att_cov._value.cov[8],
+                    posedata->att_cov._value.cov[9]
+                );
+                strcat((*log)->buffer, buffer);
+                (*log)->req.aio_nbytes = n;
+            }
+
+            if (aio_write(&(*log)->req))
+            {
+                warn("log");
+                close((*log)->req.aio_fildes);
+                (*log)->req.aio_fildes = -1;
+            }
+            else
+                (*log)->pending = true;
+            (*log)->skipped = false;
+        }
     }
 
     return arucotag_poll;
