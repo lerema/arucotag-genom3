@@ -343,10 +343,9 @@ detect_main(const arucotag_frame *frame,
     for (uint16_t i=0; i<ids.size(); i++)
     {
         // Check that detected tags are among tracked markers
-        const char* id = to_string(ids[i]).c_str();
         uint16_t j = 0;
         for (j=0; j<ports->_length; j++)
-            if (!strcmp(ports->_buffer[j], id))
+            if (!strcmp(ports->_buffer[j], to_string(ids[i]).c_str()))
                 break;
         if (j >= ports->_length) continue;
 
@@ -472,7 +471,7 @@ detect_main(const arucotag_frame *frame,
         Matrix4d cov_q = J_Tm1 * cov_rot * J_Tm1.transpose();
 
         // Publish
-        const char* tagid = to_string(ids[i]).c_str(); // not using the id variable since it gets fucked up by calling Mat J_pix = ... for some reason
+        const char* tagid = to_string(ids[i]).c_str();
 
         pose->data(tagid, self)->ts = fdata->ts;
 
