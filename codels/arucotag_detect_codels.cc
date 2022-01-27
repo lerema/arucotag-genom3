@@ -82,7 +82,7 @@ detect_start(arucotag_ids *ids, const genom_context self)
     ids->tag_info.s_pix = 3;
     ids->out_frame = 0;
     ids->calib = new arucotag_calib();
-    ids->tags = new arucotag_detector(ids->tag_info.length/2);
+    ids->tags = new arucotag_detector();
     ids->log = new arucotag_log_s();
 
     return arucotag_wait;
@@ -262,7 +262,7 @@ detect_main(const arucotag_frame *frame,
 
         // Estimate pose from corners
         Vec3d translations, rotations;
-        solvePnP((*tags)->corners_marker_cv * tag_info->length/2, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_ITERATIVE);
+        solvePnP((*tags)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_ITERATIVE);
 
         // Get translation and rotation
         Vector3d C_p_M(translations[0], translations[1], translations[2]);
@@ -277,7 +277,7 @@ detect_main(const arucotag_frame *frame,
         Matrix<double,8,6> J;           // Jacobian of f^-1
         for (uint16_t i=0; i<4; i++)
         {
-            Vector3d ci = (*tags)->corners_marker.row(i).transpose() * tag_info->length/2;
+            Vector3d ci = (*tags)->corners_marker.col(i);
             Vector3d hi = calib->K * (C_R_M * ci + C_p_M);
             // Jacobian of pixellization (homogeneous->pixel) operation wrt homogeneous coordinates
             Matrix<double,2,3> J_pix; J_pix <<

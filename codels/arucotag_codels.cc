@@ -27,6 +27,31 @@
 
 #include "codels.hpp"
 
+/* --- Attribute set_length --------------------------------------------- */
+
+/** Validation codel set_length of attribute set_length.
+ *
+ * Returns genom_ok.
+ * Throws .
+ */
+genom_event
+set_length(float length, arucotag_detector **tags,
+           const genom_context self)
+{
+    if (length <= 0)
+    {
+        arucotag_e_io_detail d;
+        snprintf(d.what, sizeof(d.what), "%s", "marker length must be positive");
+        warnx("io error: %s", d.what);
+        return arucotag_e_io(&d,self);
+    }
+
+    (*tags)->set_length(length/2);
+
+    return genom_ok;
+}
+
+
 /* --- Attribute output_frame ------------------------------------------- */
 
 /** Validation codel output_frame of attribute output_frame.

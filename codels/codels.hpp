@@ -57,17 +57,18 @@ struct arucotag_calib {
 struct arucotag_detector {
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250); // TODO give choice of dictionary
     vector<int> ids;                    // ids of detected tags
-    Matrix<double,4,3> corners_marker;  // coordinates of corners in marker frame
+    Matrix<double,3,4> corners_marker;  // coordinates of corners in marker frame
     Mat corners_marker_cv;              // opencv reprensation of corners_marker
 
-    arucotag_detector(double l) {
+    void set_length(double l) {
         corners_marker <<
-            -1,  1,  0,
-             1,  1,  0,
-             1, -1,  0,
-            -1, -1,  0;
+            -1,  1,  1, -1,
+             1,  1, -1, -1,
+             0,  0,  0,  0;
+        corners_marker *= l;
 
-        eigen2cv(corners_marker, corners_marker_cv);
+        Matrix<double,4,3> tmp = corners_marker.transpose();
+        eigen2cv(tmp, corners_marker_cv);
     }
 };
 

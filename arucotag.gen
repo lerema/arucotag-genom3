@@ -117,7 +117,9 @@ component arucotag {
             yield ether;
     };
 
-    attribute set_length(in tag_info.length = : "Length of tags");
+    attribute set_length(in tag_info.length = : "Length of tags") {
+        validate set_length(local in length, out tags);
+    };
 
     attribute set_pix_cov(in tag_info.s_pix = : "Isotropic pixel covariance of corners of the tags");
 
