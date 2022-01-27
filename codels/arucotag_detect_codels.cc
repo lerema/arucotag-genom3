@@ -26,7 +26,6 @@
 #include "arucotag_c_types.h"
 
 #include "codels.hpp"
-#include <opencv2/core/eigen.hpp>
 
 #include <string.h>
 #include <cmath>
@@ -51,6 +50,7 @@ void update_calib(const arucotag_intrinsics *intrinsics,
         intrinsics->data(self)->disto.p1,
         intrinsics->data(self)->disto.p2
     );
+
     // Init extr
     (*calib)->B_p_C <<
         extrinsics->data(self)->trans.tx,
@@ -82,7 +82,7 @@ detect_start(arucotag_ids *ids, const genom_context self)
     ids->tag_info.s_pix = 3;
     ids->out_frame = 0;
     ids->calib = new arucotag_calib();
-    ids->tags = new arucotag_detector();
+    ids->tags = new arucotag_detector(ids->tag_info.length/2);
     ids->log = new arucotag_log_s();
 
     return arucotag_wait;
@@ -194,8 +194,8 @@ detect_main(const arucotag_frame *frame,
     }
 
     // Detect tags in frame
-    vector<vector<Point2f>> corners;
-    aruco::detectMarkers(cvframe, (*tags)->dict, corners, (*tags)->ids);
+    vector<vector<Point2f>> corners_image;
+    aruco::detectMarkers(cvframe, (*tags)->dict, corners_image, (*tags)->ids);
 
     // Publish empty messages for tags that are not detected
     for (uint16_t i=0; i<ports->_length; i++)
@@ -217,10 +217,6 @@ detect_main(const arucotag_frame *frame,
     // Sleep if no detection was made
     if ((*tags)->ids.size() == 0)
         return arucotag_poll;
-
-    // Estimate pose from corners
-    vector<Vec3d> translations, rotations;
-    aruco::estimatePoseSingleMarkers(corners, tag_info->length, calib->K_cv, calib->D, rotations, translations);
 
     // Get state feedback
     Vector3d W_p_B;
@@ -264,9 +260,13 @@ detect_main(const arucotag_frame *frame,
                 break;
         if (j >= ports->_length) continue;
 
+        // Estimate pose from corners
+        Vec3d translations, rotations;
+        solvePnP((*tags)->corners_marker_cv * tag_info->length/2, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_ITERATIVE);
+
         // Get translation and rotation
-        Vector3d C_p_M(translations[i][0], translations[i][1], translations[i][2]);
-        Vector3d tmp(rotations[i][0], rotations[i][1], rotations[i][2]);
+        Vector3d C_p_M(translations[0], translations[1], translations[2]);
+        Vector3d tmp(rotations[0], rotations[1], rotations[2]);
         AngleAxisd C_aa_M;
         C_aa_M.angle() = tmp.norm();
         C_aa_M.axis() = tmp.normalized();
@@ -275,16 +275,9 @@ detect_main(const arucotag_frame *frame,
         // Compute covariance
         // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
         Matrix<double,8,6> J;           // Jacobian of f^-1
-
-        Matrix<double,3,4> c; c <<      // Coordinates of corners in marker frame
-            -1,  1,  1, -1,
-            -1, -1,  1,  1,
-             0,  0,  0,  0;
-        c = c * tag_info->length/2;
-
         for (uint16_t i=0; i<4; i++)
         {
-            Vector3d ci = c.col(i);
+            Vector3d ci = (*tags)->corners_marker.row(i).transpose() * tag_info->length/2;
             Vector3d hi = calib->K * (C_R_M * ci + C_p_M);
             // Jacobian of pixellization (homogeneous->pixel) operation wrt homogeneous coordinates
             Matrix<double,2,3> J_pix; J_pix <<
@@ -420,7 +413,7 @@ detect_main(const arucotag_frame *frame,
         // Compute centroid of tag in pixel coordinates
         Point2f center(0, 0);
         for(int p = 0; p < 4; p++)
-            center += corners[i][p];
+            center += corners_image[i][p];
         center = center / 4.;
 
         pixel_pose->data(tagid, self)->ts = pose->data(tagid, self)->ts;

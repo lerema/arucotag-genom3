@@ -39,22 +39,36 @@
 #include <unistd.h>
 #include <err.h>
 
+#include <opencv2/core/eigen.hpp>
+
 using namespace std;
 using namespace cv;
 using namespace Eigen;
 
 struct arucotag_calib {
-    Matrix3d K = Matrix3d::Zero();
-    Mat K_cv = Mat::zeros(Size(3,3), CV_32F);
-    Mat D = Mat::zeros(Size(1,5), CV_32F);
-    Vector3d B_p_C = Vector3d::Zero();
-    Matrix3d B_R_C = Matrix3d::Identity();
+    Matrix3d K = Matrix3d::Zero();              // intrinsic calibration matrix
+    Mat K_cv = Mat::zeros(Size(3,3), CV_32F);   // opencv representation of K
+    Mat D = Mat::zeros(Size(1,5), CV_32F);      // camera distortion coefs
+    Vector3d B_p_C = Vector3d::Zero();          // translation from camera to body
+    Matrix3d B_R_C = Matrix3d::Identity();      // rotation from body to camera
 };
 
 
 struct arucotag_detector {
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250); // TODO give choice of dictionary
-    vector<int> ids;    // ids of detected tags
+    vector<int> ids;                    // ids of detected tags
+    Matrix<double,4,3> corners_marker;  // coordinates of corners in marker frame
+    Mat corners_marker_cv;              // opencv reprensation of corners_marker
+
+    arucotag_detector(double l) {
+        corners_marker <<
+            -1,  1,  0,
+             1,  1,  0,
+             1, -1,  0,
+            -1, -1,  0;
+
+        eigen2cv(corners_marker, corners_marker_cv);
+    }
 };
 
 
