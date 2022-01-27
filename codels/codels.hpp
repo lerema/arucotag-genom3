@@ -45,7 +45,7 @@ using namespace std;
 using namespace cv;
 using namespace Eigen;
 
-struct arucotag_calib {
+struct arucotag_calib_s {
     Matrix3d K = Matrix3d::Zero();              // intrinsic calibration matrix
     Mat K_cv = Mat::zeros(Size(3,3), CV_32F);   // opencv representation of K
     Mat D = Mat::zeros(Size(1,5), CV_32F);      // camera distortion coefs
@@ -54,7 +54,7 @@ struct arucotag_calib {
 };
 
 
-struct arucotag_detector {
+struct arucotag_detector_s {
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250); // TODO give choice of dictionary
     vector<int> ids;                    // ids of detected tags
     Matrix<double,3,4> corners_marker;  // coordinates of corners in marker frame

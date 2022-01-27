@@ -35,7 +35,7 @@
  * Throws .
  */
 genom_event
-set_length(float length, arucotag_detector **tags,
+set_length(float length, arucotag_detector_s **detect,
            const genom_context self)
 {
     if (length <= 0)
@@ -46,7 +46,7 @@ set_length(float length, arucotag_detector **tags,
         return arucotag_e_io(&d,self);
     }
 
-    (*tags)->set_length(length/2);
+    (*detect)->set_length(length/2);
 
     return genom_ok;
 }

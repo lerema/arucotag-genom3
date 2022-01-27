@@ -42,8 +42,8 @@ component arucotag {
     exception e_io { string<128> what; };
 
     /* ---- Types --------------------------------------------------------- */
-    native calib;
-    native detector;
+    native calib_s;
+    native detector_s;
 
     native log_s;
 
@@ -66,8 +66,8 @@ component arucotag {
             unsigned short s_pix; // arbitrary isotropic pixel variance for tag corners
         } tag_info;
 
-        calib calib;
-        detector tags;
+        calib_s calib;
+        detector_s detect;
 
         or::time::ts last_ts;
         sequence<portinfo> ports;
@@ -87,10 +87,10 @@ component arucotag {
         codel<poll> detect_poll(in ports, in frame, inout last_ts)
             yield pause::poll, poll, main;
 
-        codel<main> detect_main(in frame, in tag_info, in calib, in drone, inout tags, in ports, out pose, out pixel_pose, in out_frame)
+        codel<main> detect_main(in frame, in tag_info.s_pix, in calib, in drone, inout detect, in ports, out pose, out pixel_pose, in out_frame)
             yield poll, log;
 
-        codel<log> detect_log(in tags, in ports, in pose, in pixel_pose, in out_frame, inout log)
+        codel<log> detect_log(in detect, in ports, in pose, in pixel_pose, in out_frame, inout log)
             yield poll;
     };
 
@@ -118,7 +118,7 @@ component arucotag {
     };
 
     attribute set_length(in tag_info.length = : "Length of tags") {
-        validate set_length(local in length, out tags);
+        validate set_length(local in length, out detect);
     };
 
     attribute set_pix_cov(in tag_info.s_pix = 2 : "Isotropic pixel covariance of corners of the tags");

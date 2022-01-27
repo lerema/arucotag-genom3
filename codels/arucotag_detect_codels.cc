@@ -33,7 +33,7 @@
 /* --- Helper func ------------------------------------------------------ */
 void update_calib(const arucotag_intrinsics *intrinsics,
                   const arucotag_extrinsics *extrinsics,
-                  arucotag_calib **calib, const genom_context self)
+                  arucotag_calib_s **calib, const genom_context self)
 {
     // Init intr
     or_sensor_calibration* c = &(intrinsics->data(self)->calib);
@@ -81,8 +81,8 @@ detect_start(arucotag_ids *ids, const genom_context self)
     ids->tag_info.length = 0;
     ids->tag_info.s_pix = 2;
     ids->out_frame = 0;
-    ids->calib = new arucotag_calib();
-    ids->tags = new arucotag_detector();
+    ids->calib = new arucotag_calib_s();
+    ids->detect = new arucotag_detector_s();
     ids->log = new arucotag_log_s();
 
     return arucotag_wait;
@@ -98,7 +98,7 @@ genom_event
 detect_wait(const arucotag_frame *frame,
             const arucotag_intrinsics *intrinsics,
             const arucotag_extrinsics *extrinsics, float length,
-            arucotag_calib **calib, const genom_context self)
+            arucotag_calib_s **calib, const genom_context self)
 {
     if (length > 0 &&
         intrinsics->read(self) == genom_ok && intrinsics->data(self) &&
@@ -157,10 +157,9 @@ detect_poll(const sequence_arucotag_portinfo *ports,
  * Yields to arucotag_poll, arucotag_log.
  */
 genom_event
-detect_main(const arucotag_frame *frame,
-            const arucotag_ids_tag_info_s *tag_info,
-            const arucotag_calib *calib, const arucotag_drone *drone,
-            arucotag_detector **tags,
+detect_main(const arucotag_frame *frame, uint16_t s_pix,
+            const arucotag_calib_s *calib, const arucotag_drone *drone,
+            arucotag_detector_s **detect,
             const sequence_arucotag_portinfo *ports,
             const arucotag_pose *pose,
             const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
@@ -195,11 +194,11 @@ detect_main(const arucotag_frame *frame,
 
     // Detect tags in frame
     vector<vector<Point2f>> corners_image;
-    aruco::detectMarkers(cvframe, (*tags)->dict, corners_image, (*tags)->ids);
+    aruco::detectMarkers(cvframe, (*detect)->dict, corners_image, (*detect)->ids);
 
     // Publish empty messages for tags that are not detected
     for (uint16_t i=0; i<ports->_length; i++)
-        if (find((*tags)->ids.begin(), (*tags)->ids.end(), std::stoi(ports->_buffer[i])) == (*tags)->ids.end())
+        if (find((*detect)->ids.begin(), (*detect)->ids.end(), std::stoi(ports->_buffer[i])) == (*detect)->ids.end())
         {
             pose->data(ports->_buffer[i], self)->ts = fdata->ts;
             pose->data(ports->_buffer[i], self)->pos._present = false;
@@ -215,7 +214,7 @@ detect_main(const arucotag_frame *frame,
         }
 
     // Sleep if no detection was made
-    if ((*tags)->ids.size() == 0)
+    if ((*detect)->ids.size() == 0)
         return arucotag_poll;
 
     // Get state feedback
@@ -251,18 +250,18 @@ detect_main(const arucotag_frame *frame,
     }
 
     // Process detected tags
-    for (uint16_t i=0; i<(*tags)->ids.size(); i++)
+    for (uint16_t i=0; i<(*detect)->ids.size(); i++)
     {
         // Check that detected tags are among tracked markers
         uint16_t j = 0;
         for (j=0; j<ports->_length; j++)
-            if (!strcmp(ports->_buffer[j], to_string((*tags)->ids[i]).c_str()))
+            if (!strcmp(ports->_buffer[j], to_string((*detect)->ids[i]).c_str()))
                 break;
         if (j >= ports->_length) continue;
 
         // Estimate pose from corners
         Vec3d translations, rotations;
-        solvePnP((*tags)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_ITERATIVE);
+        solvePnP((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_ITERATIVE);
 
         // Get translation and rotation
         Vector3d C_p_M(translations[0], translations[1], translations[2]);
@@ -277,7 +276,7 @@ detect_main(const arucotag_frame *frame,
         Matrix<double,8,6> J;           // Jacobian of f^-1
         for (uint16_t i=0; i<4; i++)
         {
-            Vector3d hi = calib->K * (C_R_M * (*tags)->corners_marker.col(i) + C_p_M);
+            Vector3d hi = calib->K * (C_R_M * (*detect)->corners_marker.col(i) + C_p_M);
             // Jacobian of pixellization (homogeneous->pixel) operation wrt homogeneous coordinates
             Matrix<double,2,3> J_pix; J_pix <<
                 1/hi(2), 0, -hi(0)/hi(2)/hi(2),
@@ -287,7 +286,7 @@ detect_main(const arucotag_frame *frame,
             // Jacobian of projection wrt translation
             J_proj.block(0,0,3,3) = calib->K;
             // Jacobian of projection wrt rotation
-            J_proj.block(0,3,3,3) = -calib->K * C_R_M * skew((*tags)->corners_marker.col(i));
+            J_proj.block(0,3,3,3) = -calib->K * C_R_M * skew((*detect)->corners_marker.col(i));
             // Jacobian of projection wrt euclidean coordinates (chain rule)
             Matrix<double,2,6> J_full = J_pix*J_proj;
             // Stack in J
@@ -296,7 +295,7 @@ detect_main(const arucotag_frame *frame,
 
         // First order propagation
         // Cross (pos/rot) covariance is neglected since I dunno how to transform it into pos/quat covariance
-        Matrix<double,6,6> cov = tag_info->s_pix*tag_info->s_pix * (J.transpose() * J).inverse();
+        Matrix<double,6,6> cov = s_pix*s_pix * (J.transpose() * J).inverse();
         Matrix3d cov_pos = cov.block(0,0,3,3);
         Matrix3d cov_rot = cov.block(3,3,3,3);
 
@@ -370,7 +369,7 @@ detect_main(const arucotag_frame *frame,
         Matrix4d cov_q = J_Tm1 * cov_rot * J_Tm1.transpose();
 
         // Publish
-        const char* tagid = to_string((*tags)->ids[i]).c_str();
+        const char* tagid = to_string((*detect)->ids[i]).c_str();
 
         pose->data(tagid, self)->ts = fdata->ts;
 
@@ -424,7 +423,7 @@ detect_main(const arucotag_frame *frame,
  * Yields to arucotag_poll.
  */
 genom_event
-detect_log(const arucotag_detector *tags,
+detect_log(const arucotag_detector_s *detect,
            const sequence_arucotag_portinfo *ports,
            const arucotag_pose *pose,
            const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
@@ -458,10 +457,10 @@ detect_log(const arucotag_detector *tags,
         if ((*log)->req.aio_fildes >= 0 && !(*log)->pending)
         {
             uint32_t n = snprintf((*log)->buffer, sizeof((*log)->buffer), "%s", "");
-            for (uint16_t i=0; i<tags->ids.size(); i++)
+            for (uint16_t i=0; i<detect->ids.size(); i++)
             {
                 // Check that detected tags are among tracked markers
-                const char* tagid = to_string(tags->ids[i]).c_str();
+                const char* tagid = to_string(detect->ids[i]).c_str();
                 uint16_t j = 0;
                 for (j=0; j<ports->_length; j++)
                     if (!strcmp(ports->_buffer[j], tagid))
@@ -658,7 +657,7 @@ remove_marker(const char marker[16], sequence_arucotag_portinfo *ports,
 genom_event
 set_calib(const arucotag_intrinsics *intrinsics,
           const arucotag_extrinsics *extrinsics,
-          arucotag_calib **calib, const genom_context self)
+          arucotag_calib_s **calib, const genom_context self)
 {
     if (intrinsics->read(self) != genom_ok || !intrinsics->data(self) ||
         extrinsics->read(self) != genom_ok || !extrinsics->data(self))
