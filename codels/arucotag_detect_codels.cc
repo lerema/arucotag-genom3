@@ -79,7 +79,7 @@ detect_start(arucotag_ids *ids, const genom_context self)
 {
     // Init IDS fields
     ids->tag_info.length = 0;
-    ids->tag_info.s_pix = 3;
+    ids->tag_info.s_pix = 2;
     ids->out_frame = 0;
     ids->calib = new arucotag_calib();
     ids->tags = new arucotag_detector();

@@ -121,7 +121,7 @@ component arucotag {
         validate set_length(local in length, out tags);
     };
 
-    attribute set_pix_cov(in tag_info.s_pix = : "Isotropic pixel covariance of corners of the tags");
+    attribute set_pix_cov(in tag_info.s_pix = 2 : "Isotropic pixel covariance of corners of the tags");
 
     attribute output_frame(in out_frame = 0: "desired output frame (0: camera; 1: body; 2: world)") {
         doc "Sets the frame in which the output coordinates are expressed.";
