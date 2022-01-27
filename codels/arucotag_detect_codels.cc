@@ -230,10 +230,11 @@ detect_main(const arucotag_frame *frame,
     if (!(drone->read(self) == genom_ok && drone->data(self)))
     {
         // Give default value if unable to read from port
-        W_p_B = Vector3d::Zero();
-        W_R_B = Matrix3d::Identity();
-        S_W_p_B = Matrix3d::Zero();
-        S_W_q_B = Matrix4d::Zero();
+        W_p_B.setZero();
+        W_R_B.setIdentity();
+        W_q_B.setIdentity();
+        S_W_p_B.setZero();
+        S_W_q_B.setZero();
     }
     else
     {
