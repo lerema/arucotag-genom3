@@ -83,6 +83,7 @@ detect_start(arucotag_ids *ids, const genom_context self)
     ids->out_frame = 0;
     ids->calib = new arucotag_calib();
     ids->tags = new arucotag_detector();
+    ids->log = new arucotag_log_s();
 
     return arucotag_wait;
 }
@@ -153,7 +154,7 @@ detect_poll(const sequence_arucotag_portinfo *ports,
 /** Codel detect_main of task detect.
  *
  * Triggered by arucotag_main.
- * Yields to arucotag_log.
+ * Yields to arucotag_poll, arucotag_log.
  */
 genom_event
 detect_main(const arucotag_frame *frame,
@@ -163,7 +164,7 @@ detect_main(const arucotag_frame *frame,
             const sequence_arucotag_portinfo *ports,
             const arucotag_pose *pose,
             const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
-            arucotag_log_s **log, const genom_context self)
+            const genom_context self)
 {
     or_sensor_frame* fdata = frame->data(self);
 

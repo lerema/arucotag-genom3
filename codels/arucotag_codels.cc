@@ -56,8 +56,6 @@ genom_event
 log_start(const char path[64], uint32_t decimation,
           arucotag_log_s **log, const genom_context self)
 {
-    *log = new arucotag_log_s();
-
     int fd;
 
     fd = open(path, O_WRONLY|O_APPEND|O_CREAT|O_TRUNC, 0666);
@@ -97,7 +95,6 @@ log_stop(arucotag_log_s **log, const genom_context self)
         close((*log)->req.aio_fildes);
     (*log)->req.aio_fildes = -1;
 
-    delete *log;
     warnx("logging terminated");
     return genom_ok;
 }
