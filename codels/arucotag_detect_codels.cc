@@ -277,8 +277,7 @@ detect_main(const arucotag_frame *frame,
         Matrix<double,8,6> J;           // Jacobian of f^-1
         for (uint16_t i=0; i<4; i++)
         {
-            Vector3d ci = (*tags)->corners_marker.col(i);
-            Vector3d hi = calib->K * (C_R_M * ci + C_p_M);
+            Vector3d hi = calib->K * (C_R_M * (*tags)->corners_marker.col(i) + C_p_M);
             // Jacobian of pixellization (homogeneous->pixel) operation wrt homogeneous coordinates
             Matrix<double,2,3> J_pix; J_pix <<
                 1/hi(2), 0, -hi(0)/hi(2)/hi(2),
@@ -288,11 +287,7 @@ detect_main(const arucotag_frame *frame,
             // Jacobian of projection wrt translation
             J_proj.block(0,0,3,3) = calib->K;
             // Jacobian of projection wrt rotation
-            Matrix3d skew; skew <<
-                    0 , -ci(2),  ci(1),
-                 ci(2),     0 , -ci(0),
-                -ci(1),  ci(0),     0 ;
-            J_proj.block(0,3,3,3) = -calib->K * C_R_M * skew;
+            J_proj.block(0,3,3,3) = -calib->K * C_R_M * skew((*tags)->corners_marker.col(i));
             // Jacobian of projection wrt euclidean coordinates (chain rule)
             Matrix<double,2,6> J_full = J_pix*J_proj;
             // Stack in J
@@ -330,13 +325,9 @@ detect_main(const arucotag_frame *frame,
                 // Propagate to world frame
                 // The jacobian of the transformation wrt the quaternion W_q_B is given by Eq. 174 from [Solà 2017], see Sec. 4.3.2 therein
                 // Available at: https://arxiv.org/abs/1711.02508
-                Matrix3d B_p_M_skew; B_p_M_skew <<
-                           0 , -B_p_M(2),  B_p_M(1),
-                     B_p_M(2),        0 , -B_p_M(0),
-                    -B_p_M(1),  B_p_M(0),        0 ;
                 Matrix<double,3,4> J_R;
                 J_R.col(0) = 2* (W_q_B.w()*B_p_M + W_q_B.vec().cross(B_p_M));
-                J_R.block(0,1,3,3) = 2* ((W_q_B.vec().transpose() * B_p_M)(0) * Matrix3d::Identity() + W_q_B.vec() * B_p_M.transpose() - B_p_M * W_q_B.vec().transpose() - W_q_B.w() * B_p_M_skew);
+                J_R.block(0,1,3,3) = 2* ((W_q_B.vec().transpose() * B_p_M)(0) * Matrix3d::Identity() + W_q_B.vec() * B_p_M.transpose() - B_p_M * W_q_B.vec().transpose() - W_q_B.w() * skew(B_p_M));
                 cov_pos = W_R_B * cov_pos * W_R_B.transpose() + J_R * S_W_q_B * J_R.transpose() + S_W_p_B;
                 cov_rot = W_R_B * cov_rot * W_R_B.transpose() + J_R * S_W_q_B * J_R.transpose();
                 break;

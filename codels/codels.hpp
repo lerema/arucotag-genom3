@@ -72,6 +72,13 @@ struct arucotag_detector {
     }
 };
 
+static inline
+Matrix3d skew(Vector3d v)
+{
+    Matrix3d skew;
+    skew << 0,-v(2),v(1),  v(2),0,-v(0),  -v(1),v(0),0;
+    return skew;
+}
 
 struct arucotag_log_s {
     aiocb req;
