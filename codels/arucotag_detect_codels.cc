@@ -518,6 +518,10 @@ detect_log(const arucotag_detector_s *detect,
                     posedata->pos._value.x,                         // p
                     posedata->pos._value.y,
                     posedata->pos._value.z,
+                    qw,                                             // att (quat)
+                    qx,
+                    qy,
+                    qz,
                     roll,                                           // att (euler)
                     pitch,
                     yaw,

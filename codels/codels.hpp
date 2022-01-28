@@ -100,11 +100,12 @@ struct arucotag_log_s {
     }
     # define arucotag_logfmt	"%g "
     # define arucotag_log_header                                            \
-        "ts frame i px py x y z roll pitch yaw sxx sxy syy sxz syz szz sqww sqwx sqxx sqwy sqxy sqyy sqwz sqxz sqyz sqzz "
+        "ts frame i px py x y z qw qx qy qz roll pitch yaw sxx sxy syy sxz syz szz sqww sqwx sqxx sqwy sqxy sqyy sqwz sqxz sqyz sqzz "
     # define arucotag_log_fmt                                               \
         "%d.%09d %i %s "                                                    \
         "%d %d "                                                            \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
+        arucotag_logfmt arucotag_logfmt arucotag_logfmt arucotag_logfmt     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
         arucotag_logfmt arucotag_logfmt arucotag_logfmt                     \
