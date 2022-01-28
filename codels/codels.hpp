@@ -54,11 +54,19 @@ struct arucotag_calib_s {
 };
 
 
+struct tag_detection {
+    int id;
+    Vec3d translation;
+    Vec3d rotation;
+};
+
+
 struct arucotag_detector_s {
-    Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250); // TODO give choice of dictionary
+    Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250); // TODO give choice of dictionary https://docs.opencv.org/4.4.0/d9/d6a/group__aruco.html#gac84398a9ed9dd01306592dd616c2c975
     vector<int> ids;                    // ids of detected tags
     Matrix<double,3,4> corners_marker;  // coordinates of corners in marker frame
     Mat corners_marker_cv;              // opencv reprensation of corners_marker
+    vector<tag_detection> last_detections;  // memory of previous detections, to provide initial guess to SOLVEPNP_ITERATIVE
 
     void set_length(double l) {
         corners_marker <<

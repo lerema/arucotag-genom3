@@ -196,7 +196,7 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
     vector<vector<Point2f>> corners_image;
     aruco::detectMarkers(cvframe, (*detect)->dict, corners_image, (*detect)->ids);
 
-    // Publish empty messages for tags that are not detected
+    // Publish empty messages for tracked tags that are not detected
     for (uint16_t i=0; i<ports->_length; i++)
         if (find((*detect)->ids.begin(), (*detect)->ids.end(), std::stoi(ports->_buffer[i])) == (*detect)->ids.end())
         {
@@ -257,15 +257,41 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         for (j=0; j<ports->_length; j++)
             if (!strcmp(ports->_buffer[j], to_string((*detect)->ids[i]).c_str()))
                 break;
-        if (j >= ports->_length) continue;
+        if (j == ports->_length) continue;
 
         // Estimate pose from corners
-        Vec3d translations, rotations;
-        solvePnP((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_ITERATIVE);
+        // Check if tag was among previously detected ones
+        j = 0;
+        for (j=0; j<(*detect)->last_detections.size(); j++)
+            if ((*detect)->last_detections[j].id == (*detect)->ids[i])
+                break;
+
+        // Solve PnP accordingly
+        Vec3d translation, rotation;
+        if (j == (*detect)->last_detections.size())
+        {
+            solvePnP((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotation, translation, false, SOLVEPNP_ITERATIVE);
+            // Store new detection
+            tag_detection tag;
+            tag.id = (*detect)->ids[i];
+            tag.translation = translation;
+            tag.rotation = rotation;
+            (*detect)->last_detections.push_back(tag);
+        }
+        else
+        {
+            translation = (*detect)->last_detections[j].translation;
+            rotation = (*detect)->last_detections[j].rotation;
+            solvePnP((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotation, translation, true, SOLVEPNP_ITERATIVE);
+            // Store new detection
+            (*detect)->last_detections[j].translation = translation;
+            (*detect)->last_detections[j].rotation = rotation;
+        }
+
 
         // Get translation and rotation
-        Vector3d C_p_M(translations[0], translations[1], translations[2]);
-        Vector3d tmp(rotations[0], rotations[1], rotations[2]);
+        Vector3d C_p_M(translation[0], translation[1], translation[2]);
+        Vector3d tmp(rotation[0], rotation[1], rotation[2]);
         AngleAxisd C_aa_M;
         C_aa_M.angle() = tmp.norm();
         C_aa_M.axis() = tmp.normalized();
@@ -465,7 +491,7 @@ detect_log(const arucotag_detector_s *detect,
                 for (j=0; j<ports->_length; j++)
                     if (!strcmp(ports->_buffer[j], tagid))
                         break;
-                if (j >= ports->_length) continue;
+                if (j == ports->_length) continue;
 
                 or_pose_estimator_state* posedata = pose->data(tagid, self);
 
