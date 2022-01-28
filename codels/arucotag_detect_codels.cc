@@ -205,7 +205,6 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             pose->data(ports->_buffer[i], self)->pos_cov._present = false;
             pose->data(ports->_buffer[i], self)->att._present = false;
             pose->data(ports->_buffer[i], self)->att_cov._present = false;
-            pose->data(ports->_buffer[i], self)->att_pos_cov._present = false;
             pose->write(ports->_buffer[i], self);
 
             pixel_pose->data(ports->_buffer[i], self)->ts = pose->data(ports->_buffer[i], self)->ts;
@@ -249,6 +248,8 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             pom->att_cov._value.cov[6], pom->att_cov._value.cov[7], pom->att_cov._value.cov[8], pom->att_cov._value.cov[9];
     }
 
+    vector<tag_detection> new_detections;
+
     // Process detected tags
     for (uint16_t i=0; i<(*detect)->ids.size(); i++)
     {
@@ -271,23 +272,20 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         if (j == (*detect)->last_detections.size())
         {
             solvePnP((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotation, translation, false, SOLVEPNP_ITERATIVE);
-            // Store new detection
-            tag_detection tag;
-            tag.id = (*detect)->ids[i];
-            tag.translation = translation;
-            tag.rotation = rotation;
-            (*detect)->last_detections.push_back(tag);
         }
         else
         {
             translation = (*detect)->last_detections[j].translation;
             rotation = (*detect)->last_detections[j].rotation;
             solvePnP((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotation, translation, true, SOLVEPNP_ITERATIVE);
-            // Store new detection
-            (*detect)->last_detections[j].translation = translation;
-            (*detect)->last_detections[j].rotation = rotation;
         }
 
+        // Store new detection
+        tag_detection tag;
+        tag.id = (*detect)->ids[i];
+        tag.translation = translation;
+        tag.rotation = rotation;
+        new_detections.push_back(tag);
 
         // Get translation and rotation
         Vector3d C_p_M(translation[0], translation[1], translation[2]);
@@ -299,7 +297,7 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
 
         // Compute covariance
         // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
-        Matrix<double,8,6> J;           // Jacobian of f^-1
+        Matrix<double,8,6> J;   // Jacobian of f^-1
         for (uint16_t i=0; i<4; i++)
         {
             Vector3d hi = calib->K * (C_R_M * (*detect)->corners_marker.col(i) + C_p_M);
@@ -438,6 +436,9 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         pixel_pose->data(tagid, self)->pix._value.y = round(center.y);
         pixel_pose->write(tagid, self);
     }
+
+    // Update last_detections with new ones
+    (*detect)->last_detections = new_detections;
 
     return arucotag_log;
 }
