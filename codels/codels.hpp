@@ -31,6 +31,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/aruco.hpp>
 #include <eigen3/Eigen/Dense>
+#include <opencv2/core/eigen.hpp>
 
 #include <iostream>
 #include <sys/time.h>
@@ -39,12 +40,11 @@
 #include <unistd.h>
 #include <err.h>
 
-#include <opencv2/core/eigen.hpp>
-
 using namespace std;
 using namespace cv;
 using namespace Eigen;
 
+/* --- Calibration ------------------------------------------------------ */
 struct arucotag_calib_s {
     Matrix3d K = Matrix3d::Zero();              // intrinsic calibration matrix
     Mat K_cv = Mat::zeros(Size(3,3), CV_32F);   // opencv representation of K
@@ -54,19 +54,22 @@ struct arucotag_calib_s {
 };
 
 
-struct tag_detection {
-    int id;
-    Vec3d translation;
-    Vec3d rotation;
-};
+/* --- Detection -------------------------------------------------------- */
+#define arucotag_age_max 5
 
+struct tag_detection {
+    uint16_t id;    // id of detecte tag
+    uint16_t age;   // "age" of detection (0 for current frame, increases by 1 for each past frame)
+    Vector3d t;     // translation (in camera frame)
+    Quaterniond q;  // orientation (in camera frame, quaternion reprensation)
+};
 
 struct arucotag_detector_s {
     Ptr<aruco::Dictionary> dict = aruco::getPredefinedDictionary(aruco::DICT_6X6_250); // TODO give choice of dictionary https://docs.opencv.org/4.4.0/d9/d6a/group__aruco.html#gac84398a9ed9dd01306592dd616c2c975
     vector<int> ids;                    // ids of detected tags
     Matrix<double,3,4> corners_marker;  // coordinates of corners in marker frame
     Mat corners_marker_cv;              // opencv reprensation of corners_marker
-    vector<tag_detection> last_detections;  // memory of previous detections, to provide initial guess to SOLVEPNP_ITERATIVE
+    vector<tag_detection> last_detections;  // previous detections
 
     void set_length(double l) {
         corners_marker <<
@@ -80,6 +83,8 @@ struct arucotag_detector_s {
     }
 };
 
+
+/* --- Helpers ---------------------------------------------------------- */
 static inline
 Matrix3d skew(Vector3d v)
 {
@@ -88,6 +93,18 @@ Matrix3d skew(Vector3d v)
     return skew;
 }
 
+static inline
+Quaterniond cvaa2eigenquat(Vec3d r)
+{
+    AngleAxisd aa;
+    aa.angle() = norm(r);
+    cv2eigen(r/aa.angle(), aa.axis());
+
+    return (Quaterniond) aa;
+}
+
+
+/* --- Log -------------------------------------------------------------- */
 struct arucotag_log_s {
     aiocb req;
     char buffer[4096];
@@ -116,6 +133,7 @@ struct arucotag_log_s {
 };
 
 
+/* --- Exception -------------------------------------------------------- */
 static inline genom_event
 arucotag_e_sys_error(const char *s, genom_context self)
 {

@@ -31,11 +31,11 @@
 
 /* ---- Component declaration --------------------------------------------- */
 component arucotag {
-    version         "1.0";
+    version         "2.0";
     email           "martin.jacquet@laas.fr";
     lang			"c";
     require         "genom3 >= 2.99.26";
-    codels-require  "opencv", "eigen3";
+    codels-require  "opencv >= 3.4.7", "eigen3";
 
     /* ---- Exceptions ---------------------------------------------------- */
     exception e_sys { short code; string<128> what; };

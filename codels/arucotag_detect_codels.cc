@@ -247,9 +247,7 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             pom->att_cov._value.cov[3], pom->att_cov._value.cov[4], pom->att_cov._value.cov[5], pom->att_cov._value.cov[8],
             pom->att_cov._value.cov[6], pom->att_cov._value.cov[7], pom->att_cov._value.cov[8], pom->att_cov._value.cov[9];
     }
-
-    vector<tag_detection> new_detections;
-
+// std::cout << "---" << std::endl;
     // Process detected tags
     for (uint16_t i=0; i<(*detect)->ids.size(); i++)
     {
@@ -267,40 +265,66 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             if ((*detect)->last_detections[j].id == (*detect)->ids[i])
                 break;
 
-        // Solve PnP accordingly
-        Vec3d translation, rotation;
-        if (j == (*detect)->last_detections.size())
+        // Solve PnP for the tag
+        vector<Vec3d> translations, rotations;
+        // Mat reproj_error;
+        // solvePnPGeneric((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_IPPE_SQUARE, noArray(), noArray(), reproj_error);
+        solvePnPGeneric((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_IPPE_SQUARE);
+
+        // Get the "correct" translation and rotation among the two retrieved solutions
+        // The reprojection error alone is often not enough to lift the ambiguity and causes flips in successive detection
+        // Hence, we impose a basic temporal consistency in detections by selecting the pose that minimizes the angular distance between with previous poses
+        // In order to be more robust to misses detections among frames, we keep a detetion is memory for a given amount of frames even if it is undetected
+        // This robustness scheme is very basic, a more complex one could be implemented (eg, thresholding the reproj error or a voting/median scheme over a sample of past detections)
+        Vector3d C_p_M;
+        Quaterniond C_q_M;
+        if (j < (*detect)->last_detections.size())
         {
-            solvePnP((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotation, translation, false, SOLVEPNP_ITERATIVE);
+            // If the tag has been previously detected, compare distance from last known pose to both solution
+            Quaterniond q_1 = cvaa2eigenquat(rotations[0]);
+            Quaterniond q_2 = cvaa2eigenquat(rotations[1]);
+
+            // The second solution from IPPE_QUARE might be NaN so it need to be tested first
+            if (!q_2.coeffs().hasNaN() && (*detect)->last_detections[j].q.angularDistance(q_1) > (*detect)->last_detections[j].q.angularDistance(q_2))
+            {
+                C_p_M << translations[1][0], translations[1][1], translations[1][2];
+                C_q_M = q_2;
+            }
+            else
+            {
+                C_p_M << translations[0][0], translations[0][1], translations[0][2];
+                C_q_M = q_1;
+            }
+            // avoid flips between q and -q
+            if (((*detect)->last_detections[j].q.coeffs()-C_q_M.coeffs()).norm() > 0.5)
+                C_q_M.coeffs() = -C_q_M.coeffs();
+
+            (*detect)->last_detections[j].t = C_p_M;
+            (*detect)->last_detections[j].q = C_q_M;
         }
         else
         {
-            translation = (*detect)->last_detections[j].translation;
-            rotation = (*detect)->last_detections[j].rotation;
-            solvePnP((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotation, translation, true, SOLVEPNP_ITERATIVE);
+            // If it is not, select minimum the minimum error solution and store it as new detection
+            C_p_M << translations[0][0], translations[0][1], translations[0][2];
+            C_q_M = cvaa2eigenquat(rotations[0]);
+
+            if (C_q_M.w() < 0)
+                C_q_M.coeffs() = -C_q_M.coeffs();
+
+            tag_detection tag;
+            tag.id = (*detect)->ids[i];
+            tag.age = 0;
+            tag.t = C_p_M;
+            tag.q = C_q_M;
+            (*detect)->last_detections.push_back(tag);
         }
-
-        // Store new detection
-        tag_detection tag;
-        tag.id = (*detect)->ids[i];
-        tag.translation = translation;
-        tag.rotation = rotation;
-        new_detections.push_back(tag);
-
-        // Get translation and rotation
-        Vector3d C_p_M(translation[0], translation[1], translation[2]);
-        Vector3d tmp(rotation[0], rotation[1], rotation[2]);
-        AngleAxisd C_aa_M;
-        C_aa_M.angle() = tmp.norm();
-        C_aa_M.axis() = tmp.normalized();
-        Matrix3d C_R_M(C_aa_M);
 
         // Compute covariance
         // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
         Matrix<double,8,6> J;   // Jacobian of f^-1
         for (uint16_t i=0; i<4; i++)
         {
-            Vector3d hi = calib->K * (C_R_M * (*detect)->corners_marker.col(i) + C_p_M);
+            Vector3d hi = calib->K * (C_q_M * (*detect)->corners_marker.col(i) + C_p_M);
             // Jacobian of pixellization (homogeneous->pixel) operation wrt homogeneous coordinates
             Matrix<double,2,3> J_pix; J_pix <<
                 1/hi(2), 0, -hi(0)/hi(2)/hi(2),
@@ -310,7 +334,7 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             // Jacobian of projection wrt translation
             J_proj.block(0,0,3,3) = calib->K;
             // Jacobian of projection wrt rotation
-            J_proj.block(0,3,3,3) = -calib->K * C_R_M * skew((*detect)->corners_marker.col(i));
+            J_proj.block(0,3,3,3) = -calib->K * C_q_M.toRotationMatrix() * skew((*detect)->corners_marker.col(i));
             // Jacobian of projection wrt euclidean coordinates (chain rule)
             Matrix<double,2,6> J_full = J_pix*J_proj;
             // Stack in J
@@ -330,18 +354,18 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         {
             case 0:  // Camera frame
                 position = C_p_M;
-                orientation = C_R_M;
+                orientation = C_q_M;
                 break;
             case 1:  // Body frame
                 position = calib->B_R_C * C_p_M + calib->B_p_C;
-                orientation = calib->B_R_C * C_R_M;
+                orientation = calib->B_R_C * C_q_M;
                 cov_pos = calib->B_R_C * cov_pos * calib->B_R_C.transpose();
                 cov_rot = calib->B_R_C * cov_rot * calib->B_R_C.transpose();
                 break;
             case 2:  // World frame
                 Vector3d B_p_M = calib->B_R_C * C_p_M + calib->B_p_C;
                 position = W_R_B * B_p_M + W_p_B;
-                orientation = W_R_B * calib->B_R_C * C_R_M;
+                orientation = W_R_B * calib->B_R_C * C_q_M;
                 // Propagate to body frame
                 cov_pos = calib->B_R_C * cov_pos * calib->B_R_C.transpose();
                 cov_rot = calib->B_R_C * cov_rot * calib->B_R_C.transpose();
@@ -430,6 +454,7 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             center += corners_image[i][p];
         center = center / 4.;
 
+        // Publish
         pixel_pose->data(tagid, self)->ts = pose->data(tagid, self)->ts;
         pixel_pose->data(tagid, self)->pix._present = true;
         pixel_pose->data(tagid, self)->pix._value.x = round(center.x);
@@ -437,8 +462,11 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         pixel_pose->write(tagid, self);
     }
 
-    // Update last_detections with new ones
-    (*detect)->last_detections = new_detections;
+    // Check for tags in last detections that are not detected in current frame, and increase their age or remove them
+    for (uint16_t i=0; i<(*detect)->last_detections.size(); i++)
+        if (find((*detect)->ids.begin(), (*detect)->ids.end(), (*detect)->last_detections[i].id) == (*detect)->ids.end())
+            if (++((*detect)->last_detections[i].age) > arucotag_age_max)
+                (*detect)->last_detections.erase((*detect)->last_detections.begin()+(i--));
 
     return arucotag_log;
 }
