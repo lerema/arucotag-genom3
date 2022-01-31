@@ -165,6 +165,38 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
             const genom_context self)
 {
+    // Get state feedback
+    Vector3d W_p_B;
+    Matrix3d W_R_B;
+    Quaterniond W_q_B;
+    Matrix3d S_W_p_B;
+    Matrix4d S_W_q_B;
+    if (!(drone->read(self) == genom_ok && drone->data(self)))
+    {
+        // Give default value if unable to read from port
+        W_p_B.setZero();
+        W_R_B.setIdentity();
+        W_q_B.setIdentity();
+        S_W_p_B.setZero();
+        S_W_q_B.setZero();
+    }
+    else
+    {
+        or_pose_estimator_state* pom = drone->data(self);
+        W_p_B << pom->pos._value.x, pom->pos._value.y, pom->pos._value.z;
+        W_q_B = Quaterniond(pom->att._value.qw, pom->att._value.qx, pom->att._value.qy, pom->att._value.qz);
+        W_R_B = W_q_B;
+        S_W_p_B <<
+            pom->pos_cov._value.cov[0], pom->pos_cov._value.cov[1], pom->pos_cov._value.cov[3],
+            pom->pos_cov._value.cov[1], pom->pos_cov._value.cov[2], pom->pos_cov._value.cov[4],
+            pom->pos_cov._value.cov[3], pom->pos_cov._value.cov[4], pom->pos_cov._value.cov[5];
+        S_W_q_B <<
+            pom->att_cov._value.cov[0], pom->att_cov._value.cov[1], pom->att_cov._value.cov[3], pom->att_cov._value.cov[6],
+            pom->att_cov._value.cov[1], pom->att_cov._value.cov[2], pom->att_cov._value.cov[4], pom->att_cov._value.cov[7],
+            pom->att_cov._value.cov[3], pom->att_cov._value.cov[4], pom->att_cov._value.cov[5], pom->att_cov._value.cov[8],
+            pom->att_cov._value.cov[6], pom->att_cov._value.cov[7], pom->att_cov._value.cov[8], pom->att_cov._value.cov[9];
+    }
+
     or_sensor_frame* fdata = frame->data(self);
 
     // Convert frame to cv::Mat
@@ -216,38 +248,6 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
     if ((*detect)->ids.size() == 0)
         return arucotag_poll;
 
-    // Get state feedback
-    Vector3d W_p_B;
-    Matrix3d W_R_B;
-    Quaterniond W_q_B;
-    Matrix3d S_W_p_B;
-    Matrix4d S_W_q_B;
-    if (!(drone->read(self) == genom_ok && drone->data(self)))
-    {
-        // Give default value if unable to read from port
-        W_p_B.setZero();
-        W_R_B.setIdentity();
-        W_q_B.setIdentity();
-        S_W_p_B.setZero();
-        S_W_q_B.setZero();
-    }
-    else
-    {
-        or_pose_estimator_state* pom = drone->data(self);
-        W_p_B << pom->pos._value.x, pom->pos._value.y, pom->pos._value.z;
-        W_q_B = Quaterniond(pom->att._value.qw, pom->att._value.qx, pom->att._value.qy, pom->att._value.qz);
-        W_R_B = W_q_B;
-        S_W_p_B <<
-            pom->pos_cov._value.cov[0], pom->pos_cov._value.cov[1], pom->pos_cov._value.cov[3],
-            pom->pos_cov._value.cov[1], pom->pos_cov._value.cov[2], pom->pos_cov._value.cov[4],
-            pom->pos_cov._value.cov[3], pom->pos_cov._value.cov[4], pom->pos_cov._value.cov[5];
-        S_W_q_B <<
-            pom->att_cov._value.cov[0], pom->att_cov._value.cov[1], pom->att_cov._value.cov[3], pom->att_cov._value.cov[6],
-            pom->att_cov._value.cov[1], pom->att_cov._value.cov[2], pom->att_cov._value.cov[4], pom->att_cov._value.cov[7],
-            pom->att_cov._value.cov[3], pom->att_cov._value.cov[4], pom->att_cov._value.cov[5], pom->att_cov._value.cov[8],
-            pom->att_cov._value.cov[6], pom->att_cov._value.cov[7], pom->att_cov._value.cov[8], pom->att_cov._value.cov[9];
-    }
-// std::cout << "---" << std::endl;
     // Process detected tags
     for (uint16_t i=0; i<(*detect)->ids.size(); i++)
     {
@@ -308,6 +308,7 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             C_p_M << translations[0][0], translations[0][1], translations[0][2];
             C_q_M = cvaa2eigenquat(rotations[0]);
 
+            // Fix w >= 0 as convention
             if (C_q_M.w() < 0)
                 C_q_M.coeffs() = -C_q_M.coeffs();
 
