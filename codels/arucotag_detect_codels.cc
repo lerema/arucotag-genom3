@@ -381,38 +381,28 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
                 break;
         }
 
-        // Convert rotation covariance (i.e. element of SO(3)) to quaternion covariance (i.e. element of R^4)
+        // Convert rotation covariance (i.e. element of tangent space R^(3)) to quaternion covariance (i.e. element of R^4)
         // We consider the Jacobian of the inverse transformation T: q -> theta*u which is easier to compute
         // 1/qv_norm^3 is extracted out of the matrix to avoid numerical issue before (pseudo-)inversion, and reintegrated afterward
         Matrix<double,3,4> J_T; // Jacobian of T
         double qw = orientation.w();
-        double qx = orientation.x();
-        double qy = orientation.y();
-        double qz = orientation.z();
-        double qv_norm = orientation.vec().norm();
+        Vector3d qv = orientation.vec();
+        double qv_norm = qv.norm();
+        double qv_norm2 = qv_norm*qv_norm;
+        double qv_norm3 = qv_norm2*qv_norm;
         double theta = 2*atan2(qv_norm, qw);
-        J_T(0,0) = 2*pow(qv_norm,3)*qx/(qw*qw+qv_norm*qv_norm);
-        J_T(1,0) = 2*pow(qv_norm,3)*qy/(qw*qw+qv_norm*qv_norm);
-        J_T(2,0) = 2*pow(qv_norm,3)*qz/(qw*qw+qv_norm*qv_norm);
-        J_T(0,1) = pow(qv_norm,2)*theta + pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T(1,1) = pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T(2,1) = pow(qx,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T(0,2) = pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T(1,2) = pow(qv_norm,2)*theta + pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T(2,2) = pow(qy,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T(0,3) = pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T(1,3) = pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
-        J_T(2,3) = pow(qv_norm,2)*theta + pow(qz,2)*(theta-(2*qw*qv_norm)/(qw*qw+qv_norm*qv_norm));
+        J_T.col(0) = -2*qv_norm3*orientation.vec();
+        J_T.block<3,3>(0,1) = qv_norm2*theta*Matrix3d::Identity() + 2*(qw*qv_norm - theta)*qv*qv.transpose();
         Matrix<double,4,3> J_Tm1; // Jacobian of T^-1: theta*u -> q
         Mat J_tmp;
         eigen2cv(J_T, J_tmp); // Switch to opencv for pseudoinversion because eigen is shit
         invert(J_tmp, J_tmp, DECOMP_SVD); // SVD handles pseudoinversion of rectangular matrices
         cv2eigen(J_tmp, J_Tm1);
-        J_Tm1 = J_Tm1 * pow(qv_norm,3);
         // Potential workaround here is to declare J_T as a dynamic sized matrix (otherwise ComputeThinU will complain) and use the following lines:
         //  JacobiSVD<Matrix<double,3,4>> svd(J_T, ComputeThinU | ComputeThinV);
         //  double tolerance = std::numeric_limits<double>::epsilon() * std::max(J_T.cols(), J_T.rows()) *svd.singularValues().array().abs()(0);
         //  J_Tm1 = svd.matrixV() * (svd.singularValues().array().abs() > tolerance).select(svd.singularValues().array().inverse(), 0).matrix().asDiagonal() * svd.matrixU().adjoint();
+        J_Tm1 = J_Tm1 * qv_norm3;
 
         // Propagation of covariance
         Matrix4d cov_q = J_Tm1 * cov_rot * J_Tm1.transpose();
