@@ -382,30 +382,19 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         }
 
         // Convert rotation covariance (i.e. element of tangent space R^(3)) to quaternion covariance (i.e. element of R^4)
-        // We consider the Jacobian of the inverse transformation T: q -> theta*u which is easier to compute
-        // 1/qv_norm^3 is extracted out of the matrix to avoid numerical issue before (pseudo-)inversion, and reintegrated afterward
-        Matrix<double,3,4> J_T; // Jacobian of T
-        double qw = orientation.w();
-        Vector3d qv = orientation.vec();
-        double qv_norm = qv.norm();
-        double qv_norm2 = qv_norm*qv_norm;
-        double qv_norm3 = qv_norm2*qv_norm;
-        double theta = 2*atan2(qv_norm, qw);
-        J_T.col(0) = -2*qv_norm3*orientation.vec();
-        J_T.block<3,3>(0,1) = qv_norm2*theta*Matrix3d::Identity() + 2*(qw*qv_norm - theta)*qv*qv.transpose();
-        Matrix<double,4,3> J_Tm1; // Jacobian of T^-1: theta*u -> q
-        Mat J_tmp;
-        eigen2cv(J_T, J_tmp); // Switch to opencv for pseudoinversion because eigen is shit
-        invert(J_tmp, J_tmp, DECOMP_SVD); // SVD handles pseudoinversion of rectangular matrices
-        cv2eigen(J_tmp, J_Tm1);
-        // Potential workaround here is to declare J_T as a dynamic sized matrix (otherwise ComputeThinU will complain) and use the following lines:
-        //  JacobiSVD<Matrix<double,3,4>> svd(J_T, ComputeThinU | ComputeThinV);
-        //  double tolerance = std::numeric_limits<double>::epsilon() * std::max(J_T.cols(), J_T.rows()) *svd.singularValues().array().abs()(0);
-        //  J_Tm1 = svd.matrixV() * (svd.singularValues().array().abs() > tolerance).select(svd.singularValues().array().inverse(), 0).matrix().asDiagonal() * svd.matrixU().adjoint();
-        J_Tm1 = J_Tm1 * qv_norm3;
+        Matrix<double,4,3> J_exp;
+        double theta = ((AngleAxisd) orientation).angle();
+        Vector3d u = ((AngleAxisd) orientation).axis();
+        if (theta < 0.1) {  // small angle approx.: if theta/2 < 0.25rad (~15°)
+            J_exp.row(0) = -theta/4 * u;
+            J_exp.block<3,3>(1,0) = 0.5*Matrix3d::Identity() - theta*theta/8 * u*u.transpose();
+        } else {
+            double c = cos(theta/2), s = sin(theta/2);
+            J_exp.row(0) = -0.5 * s * u;
+            J_exp.block<3,3>(1,0) = s/theta*Matrix3d::Identity() + (c/2 - s/theta) * u*u.transpose();
+        }
 
-        // Propagation of covariance
-        Matrix4d cov_q = J_Tm1 * cov_rot * J_Tm1.transpose();
+        Matrix4d cov_q = J_exp * cov_rot * J_exp.transpose();
 
         // Publish
         const char* tagid = to_string((*detect)->ids[i]).c_str();
