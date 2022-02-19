@@ -270,12 +270,12 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         // solvePnPGeneric((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_IPPE_SQUARE);
 
         // Get the "correct" translation and rotation among the two retrieved solutions
-        // The reprojection error alone is often not enough to lift the ambiguity and causes flips in successive detection
-        // Hence, we impose a basic temporal consistency in detections by selecting the pose that minimizes the angular distance between with previous poses
+        // Check ambiguity is often done using the likelihood ratio of reproj. errors, 0.6 seems a decent ambiguity threshold, according to [Muñoz-Salinas 18]
+        // However, the reprojection error alone is often not enough to lift the ambiguity and causes flips in successive detection
+        // Rather, impose a basic temporal consistency in detections by selecting the pose that minimizes the angular distance between with previous poses
+        // I use the likelihood ratio wrt distance to last detection to discriminate to enfore temporal consistency
+        // For more robustness, a last detections are stored in a queue and we use a basic voting scheme according to this ratio
         // In order to be more robust to misses detections among frames, we keep a detetion is memory for a given amount of frames even if it is undetected
-        // Check ambiguity using the likelihood ratio of reproj. errors
-        // 0.6 seems a decent ambiguity threshold, after [Muñoz-Salinas 18]
-        // Rather, I use the likelihood ratio wrt distance to last distance to discriminate to enfore temporal consistency
         // The second solution from IPPE_QUARE might be NaN so it needs to be tested first
         Vector3d C_p_M;
         Quaterniond C_q_M;
@@ -324,21 +324,15 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
                         vote_0++;
                     else if (dq_1 < 0.8 * dq_0)
                         vote_1++;
-                    // else
-                    //     std::cout
-                    //     << "--" << std::endl
-                    //     << "reproj : " << reproj_error.at<double>(0) << " - " << reproj_error.at<double>(1) << std::endl
-                    //     << "angdist: " << dq_0 << " - " <<  dq_1 << std::endl
-                    //     << "qs     : [" << q_0.coeffs().transpose() << "] - [" << q_1.coeffs().transpose() << "]" << std::endl
-                    //     << "q-     : [" << qh.coeffs().transpose() << "]"<< std::endl;
                 }
 
-                if (vote_0 < vote_1)
+                // Choose either solution if it has at least 2 more votes than the other one
+                if (vote_0 < vote_1-1)
                 {
                     C_p_M << translations[1][0], translations[1][1], translations[1][2];
                     C_q_M = q_1;
                 }
-                else if (vote_0 > vote_1)
+                else if (vote_0 > vote_1+1)
                 {
                     C_p_M << translations[0][0], translations[0][1], translations[0][2];
                     C_q_M = q_0;
