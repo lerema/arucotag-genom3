@@ -25,7 +25,7 @@ dnl
 
 AC_PREREQ(2.59)
 
-AC_INIT([arucotag-genom3],[2.0],[martin.jacquet@laas.fr])
+AC_INIT([arucotag-genom3],[2.1],[martin.jacquet@laas.fr])
 AC_CONFIG_MACRO_DIR([autoconf])
 AC_CONFIG_AUX_DIR([autoconf])
 AC_CONFIG_HEADERS([autoconf/acarucotag.h])

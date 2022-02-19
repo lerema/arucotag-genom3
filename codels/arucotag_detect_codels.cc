@@ -327,12 +327,12 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
                 }
 
                 // Choose either solution if it has at least 2 more votes than the other one
-                if (vote_0 < vote_1-1)
+                if (vote_0 < vote_1)
                 {
                     C_p_M << translations[1][0], translations[1][1], translations[1][2];
                     C_q_M = q_1;
                 }
-                else if (vote_0 > vote_1+1)
+                else if (vote_0 > vote_1)
                 {
                     C_p_M << translations[0][0], translations[0][1], translations[0][2];
                     C_q_M = q_0;
