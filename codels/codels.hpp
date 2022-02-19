@@ -33,6 +33,8 @@
 #include <eigen3/Eigen/Dense>
 #include <opencv2/core/eigen.hpp>
 
+#include <queue>
+
 #include <iostream>
 #include <sys/time.h>
 #include <aio.h>
@@ -55,13 +57,21 @@ struct arucotag_calib_s {
 
 
 /* --- Detection -------------------------------------------------------- */
-#define arucotag_age_max 5
+#define arucotag_hist_size 5
+#define arucotag_age_max 10
 
-struct tag_detection {
-    uint16_t id;    // id of detecte tag
-    uint16_t age;   // "age" of detection (0 for current frame, increases by 1 for each past frame)
+struct pose6D {
+    pose6D(Vector3d t_in, Quaterniond q_in) {
+        t = t_in;
+        q = q_in;
+    }
     Vector3d t;     // translation (in camera frame)
     Quaterniond q;  // orientation (in camera frame, quaternion reprensation)
+};
+struct tag_detection {
+    uint16_t id;        // id of detecte tag
+    uint16_t age;       // "age" of detection (0 for current frame, increases by 1 for each past frame)
+    queue<pose6D> history;    // history of detections
 };
 
 struct arucotag_detector_s {

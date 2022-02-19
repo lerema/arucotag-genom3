@@ -70,6 +70,35 @@ output_frame(int16_t out_frame, const genom_context self)
     return genom_ok;
 }
 
+
+/* --- Function stop ---------------------------------------------------- */
+
+/** Codel stop of function stop.
+ *
+ * Returns genom_ok.
+ */
+genom_event
+stop(bool *stopped, const genom_context self)
+{
+    *stopped = true;
+    return genom_ok;
+}
+
+
+/* --- Function resume -------------------------------------------------- */
+
+/** Codel resume of function resume.
+ *
+ * Returns genom_ok.
+ */
+genom_event
+resume(bool *stopped, const genom_context self)
+{
+    *stopped = false;
+    return genom_ok;
+}
+
+
 /* --- Function log ----------------------------------------------------- */
 
 /** Codel log_start of function log.

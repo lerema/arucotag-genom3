@@ -81,6 +81,7 @@ detect_start(arucotag_ids *ids, const genom_context self)
     ids->tag_info.length = 0;
     ids->tag_info.s_pix = 2;
     ids->out_frame = 0;
+    ids->stopped = false;
     ids->calib = new arucotag_calib_s();
     ids->detect = new arucotag_detector_s();
     ids->log = new arucotag_log_s();
@@ -123,7 +124,7 @@ detect_wait(const arucotag_frame *frame,
  * Yields to arucotag_pause_poll, arucotag_poll, arucotag_main.
  */
 genom_event
-detect_poll(const sequence_arucotag_portinfo *ports,
+detect_poll(bool stopped, const sequence_arucotag_portinfo *ports,
             const arucotag_frame *frame, or_time_ts *last_ts,
             const genom_context self)
 {
@@ -134,7 +135,7 @@ detect_poll(const sequence_arucotag_portinfo *ports,
     gettimeofday(&start, NULL);
 
     frame->read(self);
-    if (frame->data(self)->ts.nsec != last_ts->nsec || frame->data(self)->ts.sec != last_ts->sec)
+    if (!stopped && (frame->data(self)->ts.nsec != last_ts->nsec || frame->data(self)->ts.sec != last_ts->sec))
     {
         *last_ts = frame->data(self)->ts;
         return arucotag_main;
@@ -142,6 +143,7 @@ detect_poll(const sequence_arucotag_portinfo *ports,
     }
     else
     {
+        // compensate for time spent in read()
         gettimeofday(&stop, NULL);
         double dt_ms = (stop.tv_sec + stop.tv_usec*1e-6 - start.tv_sec - start.tv_usec*1e-6)*1e3;
         if (dt_ms < arucotag_pause_ms)
@@ -226,6 +228,7 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
 
     // Detect tags in frame
     vector<vector<Point2f>> corners_image;
+    // aruco::detectMarkers(cvframe, (*detect)->dict, corners_image, (*detect)->ids, aruco::DetectorParameters::create(), noArray(), calib->K_cv, calib->D);
     aruco::detectMarkers(cvframe, (*detect)->dict, corners_image, (*detect)->ids);
 
     // Publish empty messages for tracked tags that are not detected
@@ -259,52 +262,32 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         if (j == ports->_length) continue;
 
         // Estimate pose from corners
-        // Check if tag was among previously detected ones
-        j = 0;
-        for (j=0; j<(*detect)->last_detections.size(); j++)
-            if ((*detect)->last_detections[j].id == (*detect)->ids[i])
-                break;
 
         // Solve PnP for the tag
         vector<Vec3d> translations, rotations;
-        // Mat reproj_error;
-        // solvePnPGeneric((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_IPPE_SQUARE, noArray(), noArray(), reproj_error);
-        solvePnPGeneric((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_IPPE_SQUARE);
+        Mat reproj_error;
+        solvePnPGeneric((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_IPPE_SQUARE, noArray(), noArray(), reproj_error);
+        // solvePnPGeneric((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_IPPE_SQUARE);
 
         // Get the "correct" translation and rotation among the two retrieved solutions
         // The reprojection error alone is often not enough to lift the ambiguity and causes flips in successive detection
         // Hence, we impose a basic temporal consistency in detections by selecting the pose that minimizes the angular distance between with previous poses
         // In order to be more robust to misses detections among frames, we keep a detetion is memory for a given amount of frames even if it is undetected
-        // This robustness scheme is very basic, a more complex one could be implemented (eg, thresholding the reproj error or a voting/median scheme over a sample of past detections)
+        // Check ambiguity using the likelihood ratio of reproj. errors
+        // 0.6 seems a decent ambiguity threshold, after [Muñoz-Salinas 18]
+        // Rather, I use the likelihood ratio wrt distance to last distance to discriminate to enfore temporal consistency
+        // The second solution from IPPE_QUARE might be NaN so it needs to be tested first
         Vector3d C_p_M;
         Quaterniond C_q_M;
-        if (j < (*detect)->last_detections.size())
-        {
-            // If the tag has been previously detected, compare distance from last known pose to both solution
-            Quaterniond q_1 = cvaa2eigenquat(rotations[0]);
-            Quaterniond q_2 = cvaa2eigenquat(rotations[1]);
 
-            // The second solution from IPPE_QUARE might be NaN so it need to be tested first
-            if (!q_2.coeffs().hasNaN() && (*detect)->last_detections[j].q.angularDistance(q_1) > (*detect)->last_detections[j].q.angularDistance(q_2))
-            {
-                C_p_M << translations[1][0], translations[1][1], translations[1][2];
-                C_q_M = q_2;
-            }
-            else
-            {
-                C_p_M << translations[0][0], translations[0][1], translations[0][2];
-                C_q_M = q_1;
-            }
-            // avoid flips between q and -q
-            if (((*detect)->last_detections[j].q.coeffs()-C_q_M.coeffs()).norm() > 0.5)
-                C_q_M.coeffs() = -C_q_M.coeffs();
-
-            (*detect)->last_detections[j].t = C_p_M;
-            (*detect)->last_detections[j].q = C_q_M;
-        }
-        else
+        // Check if tag was among previously detected ones
+        j = 0;
+        for (j=0; j<(*detect)->last_detections.size(); j++)
+            if ((*detect)->last_detections[j].id == (*detect)->ids[i])
+                break;
+        if (j >= (*detect)->last_detections.size())
         {
-            // If it is not, select minimum the minimum error solution and store it as new detection
+            // If the tag is newly detected, select minimum the minimum error solution and store it as new detection
             C_p_M << translations[0][0], translations[0][1], translations[0][2];
             C_q_M = cvaa2eigenquat(rotations[0]);
 
@@ -314,11 +297,65 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
 
             tag_detection tag;
             tag.id = (*detect)->ids[i];
-            tag.age = 0;
-            tag.t = C_p_M;
-            tag.q = C_q_M;
+            // tag.age = 0;
+            tag.history.push(pose6D(C_p_M, C_q_M));
             (*detect)->last_detections.push_back(tag);
         }
+        else
+        {
+            Quaterniond q_0 = cvaa2eigenquat(rotations[0]);
+            Quaterniond q_1 = cvaa2eigenquat(rotations[1]);
+
+            if (q_1.coeffs().hasNaN())
+            {
+                C_p_M << translations[0][0], translations[0][1], translations[0][2];
+                C_q_M = q_0;
+            }
+            else
+            {
+                uint16_t vote_0 = 0, vote_1 = 0;
+                queue<pose6D> qu = (*detect)->last_detections[j].history;
+                while (!qu.empty())
+                {
+                    Quaterniond qh = qu.front().q;
+                    qu.pop();
+                    double dq_0 = qh.angularDistance(q_0), dq_1 = qh.angularDistance(q_1);
+                    if (dq_0 < 0.8 * dq_1)
+                        vote_0++;
+                    else if (dq_1 < 0.8 * dq_0)
+                        vote_1++;
+                    // else
+                    //     std::cout
+                    //     << "--" << std::endl
+                    //     << "reproj : " << reproj_error.at<double>(0) << " - " << reproj_error.at<double>(1) << std::endl
+                    //     << "angdist: " << dq_0 << " - " <<  dq_1 << std::endl
+                    //     << "qs     : [" << q_0.coeffs().transpose() << "] - [" << q_1.coeffs().transpose() << "]" << std::endl
+                    //     << "q-     : [" << qh.coeffs().transpose() << "]"<< std::endl;
+                }
+
+                if (vote_0 < vote_1)
+                {
+                    C_p_M << translations[1][0], translations[1][1], translations[1][2];
+                    C_q_M = q_1;
+                }
+                else if (vote_0 > vote_1)
+                {
+                    C_p_M << translations[0][0], translations[0][1], translations[0][2];
+                    C_q_M = q_0;
+                }
+                else
+                    continue;
+            }
+
+            // avoid flips between q and -q
+            if (((*detect)->last_detections[j].history.back().q.coeffs()-C_q_M.coeffs()).norm() > 1)
+                C_q_M.coeffs() = -C_q_M.coeffs();
+
+            (*detect)->last_detections[j].history.push(pose6D(C_p_M, C_q_M));
+            if ((*detect)->last_detections[j].history.size() > arucotag_hist_size)
+                (*detect)->last_detections[j].history.pop();
+        }
+
 
         // Compute covariance
         // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
@@ -333,20 +370,18 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             // Jacobian of projection
             Matrix<double,3,6> J_proj;
             // Jacobian of projection wrt translation
-            J_proj.block(0,0,3,3) = calib->K;
+            J_proj.block<3,3>(0,0) = calib->K;
             // Jacobian of projection wrt rotation
-            J_proj.block(0,3,3,3) = -calib->K * C_q_M.toRotationMatrix() * skew((*detect)->corners_marker.col(i));
-            // Jacobian of projection wrt euclidean coordinates (chain rule)
-            Matrix<double,2,6> J_full = J_pix*J_proj;
-            // Stack in J
-            J.block(i*2,0,2,6) = J_full;
+            J_proj.block<3,3>(0,3) = -calib->K * C_q_M.matrix() * skew((*detect)->corners_marker.col(i));
+            // Stack the Jacobian of projection wrt euclidean coordinates (chain rule) in J
+            J.block<2,6>(i*2,0) = J_pix*J_proj;
         }
 
         // First order propagation
         // Cross (pos/rot) covariance is neglected since I dunno how to transform it into pos/quat covariance
         Matrix<double,6,6> cov = s_pix*s_pix * (J.transpose() * J).inverse();
-        Matrix3d cov_pos = cov.block(0,0,3,3);
-        Matrix3d cov_rot = cov.block(3,3,3,3);
+        Matrix3d cov_pos = cov.block<3,3>(0,0);
+        Matrix3d cov_rot = cov.block<3,3>(3,3);
 
         // Transform to desired frame and propagate covariance
         Vector3d position;
@@ -385,7 +420,9 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         Matrix<double,4,3> J_exp;
         double theta = ((AngleAxisd) orientation).angle();
         Vector3d u = ((AngleAxisd) orientation).axis();
-        if (theta < 0.1) {  // small angle approx.: if theta/2 < 0.25rad (~15°)
+        if (theta < 1e-5)           // trivial continuous extension when theta->0
+            J_exp << 0,0,0, 0.5,0,0, 0,0.5,0, 0,0,0.5;
+        else if (theta < 0.5) {     // small angle approx.: if theta/2 < 0.25rad (~15°)
             J_exp.row(0) = -theta/4 * u;
             J_exp.block<3,3>(1,0) = 0.5*Matrix3d::Identity() - theta*theta/8 * u*u.transpose();
         } else {
@@ -393,7 +430,6 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             J_exp.row(0) = -0.5 * s * u;
             J_exp.block<3,3>(1,0) = s/theta*Matrix3d::Identity() + (c/2 - s/theta) * u*u.transpose();
         }
-
         Matrix4d cov_q = J_exp * cov_rot * J_exp.transpose();
 
         // Publish
@@ -442,11 +478,11 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         pixel_pose->write(tagid, self);
     }
 
-    // Check for tags in last detections that are not detected in current frame, and increase their age or remove them
-    for (uint16_t i=0; i<(*detect)->last_detections.size(); i++)
-        if (find((*detect)->ids.begin(), (*detect)->ids.end(), (*detect)->last_detections[i].id) == (*detect)->ids.end())
-            if (++((*detect)->last_detections[i].age) > arucotag_age_max)
-                (*detect)->last_detections.erase((*detect)->last_detections.begin()+(i--));
+    // // Check for tags in last detections that are not detected in current frame, and increase their age or remove them
+    // for (uint16_t i=0; i<(*detect)->last_detections.size(); i++)
+    //     if (find((*detect)->ids.begin(), (*detect)->ids.end(), (*detect)->last_detections[i].id) == (*detect)->ids.end())
+    //         if (++((*detect)->last_detections[i].age) > arucotag_age_max)
+    //             (*detect)->last_detections.erase((*detect)->last_detections.begin()+(i--));
 
     return arucotag_log;
 }

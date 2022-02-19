@@ -35,7 +35,8 @@ component arucotag {
     email           "martin.jacquet@laas.fr";
     lang			"c";
     require         "genom3 >= 2.99.26";
-    codels-require  "opencv >= 3.4.7", "eigen3";
+    codels-require  "opencv >= 3.4.7",  /* Or opencv4 >= 4.1.1 */
+                    "eigen3";
 
     /* ---- Exceptions ---------------------------------------------------- */
     exception e_sys { short code; string<128> what; };
@@ -60,10 +61,12 @@ component arucotag {
 
     /* ---- IDS ----------------------------------------------------------- */
     ids {
+        boolean stopped;    // toggle the component
+
         short out_frame;
         struct tag_info_s {
             float length;
-            unsigned short s_pix; // arbitrary isotropic pixel variance for tag corners
+            unsigned short s_pix;   // arbitrary isotropic pixel variance for tag corners
         } tag_info;
 
         calib_s calib;
@@ -74,7 +77,7 @@ component arucotag {
         log_s log;
     };
 
-    const unsigned short pause_ms = 1; // pause between frame polling in ms
+    const unsigned short pause_ms = 1;  // pause between frame polling in ms
 
     /* ---- Main task ----------------------------------------------------- */
     task detect {
@@ -84,7 +87,7 @@ component arucotag {
         codel<wait> detect_wait(in frame, in intrinsics, in extrinsics, in tag_info.length, out calib)
             yield wait, poll;
 
-        codel<poll> detect_poll(in ports, in frame, inout last_ts)
+        codel<poll> detect_poll(in stopped, in ports, in frame, inout last_ts)
             yield pause::poll, poll, main;
 
         codel<main> detect_main(in frame, in tag_info.s_pix, in calib, in drone, inout detect, in ports, out pose, out pixel_pose, in out_frame)
@@ -130,6 +133,17 @@ component arucotag {
         doc "(2) assumes (1) and that the drone input port is connected.";
         validate output_frame(local in out_frame);
         throw e_sys;
+    };
+
+    /* ---- Toggle pause -------------------------------------------------- */
+    function stop() {
+        doc "Stops the component until resume() is called.";
+        codel stop(out stopped);
+    };
+
+    function resume() {
+        doc "Restarts the component if stop() was called.";
+        codel resume(out stopped);
     };
 
     /* ---- Logging ------------------------------------------------------- */
