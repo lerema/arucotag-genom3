@@ -584,6 +584,9 @@ detect_log(const arucotag_detector_s *detect,
                 (*log)->req.aio_nbytes = n;
             }
 
+            if (!n)
+                return arucotag_poll;   // avoid log of empty string with creates issues
+
             if (aio_write(&(*log)->req))
             {
                 warn("log");
