@@ -276,9 +276,13 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         // I use the likelihood ratio wrt distance to last detection to discriminate to enfore temporal consistency
         // For more robustness, a last detections are stored in a queue and we use a basic voting scheme according to this ratio
         // In order to be more robust to misses detections among frames, we keep a detetion is memory for a given amount of frames even if it is undetected
-        // The second solution from IPPE_QUARE might be NaN so it needs to be tested first
         Vector3d C_p_M;
         Quaterniond C_q_M;
+
+        // Check for NaN
+        Quaterniond q_0 = cvaa2eigenquat(rotations[0]);
+        if (q_0.coeffs().hasNaN())
+            continue;
 
         // Check if tag was among previously detected ones
         j = 0;
@@ -303,9 +307,9 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
         }
         else
         {
-            Quaterniond q_0 = cvaa2eigenquat(rotations[0]);
             Quaterniond q_1 = cvaa2eigenquat(rotations[1]);
 
+            // The second solution from IPPE_QUARE might be NaN so it needs to be tested first
             if (q_1.coeffs().hasNaN())
             {
                 C_p_M << translations[0][0], translations[0][1], translations[0][2];
@@ -349,7 +353,8 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             if ((*detect)->last_detections[j].history.size() > arucotag_hist_size)
                 (*detect)->last_detections[j].history.pop();
         }
-
+if (std::isnan(C_q_M.coeffs().cwiseAbs().maxCoeff()))
+    std::cout << "NAN DANS CqM" << std::endl;
 
         // Compute covariance
         // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
@@ -370,7 +375,8 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             // Stack the Jacobian of projection wrt euclidean coordinates (chain rule) in J
             J.block<2,6>(i*2,0) = J_pix*J_proj;
         }
-
+if (std::isnan(J.cwiseAbs().maxCoeff()))
+    std::cout << "NAN DANS J" << std::endl;
         // First order propagation
         // Cross (pos/rot) covariance is neglected since I dunno how to transform it into pos/quat covariance
         Matrix<double,6,6> cov = s_pix*s_pix * (J.transpose() * J).inverse();
@@ -424,8 +430,11 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             J_exp.row(0) = -0.5 * s * u;
             J_exp.block<3,3>(1,0) = s/theta*Matrix3d::Identity() + (c/2 - s/theta) * u*u.transpose();
         }
+if (std::isnan(J_exp.cwiseAbs().maxCoeff()))
+    std::cout << "NAN DANS JEXP" << std::endl;
         Matrix4d cov_q = J_exp * cov_rot * J_exp.transpose();
-
+if (std::isnan(cov_q.cwiseAbs().maxCoeff()))
+    std::cout << "NAN DANS COVQ" << std::endl;
         // Publish
         const char* tagid = to_string((*detect)->ids[i]).c_str();
 
@@ -585,7 +594,7 @@ detect_log(const arucotag_detector_s *detect,
             }
 
             if (!n)
-                return arucotag_poll;   // avoid log of empty string with creates issues
+                return arucotag_poll;   // avoid log of empty to_string
 
             if (aio_write(&(*log)->req))
             {

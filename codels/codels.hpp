@@ -57,7 +57,7 @@ struct arucotag_calib_s {
 
 
 /* --- Detection -------------------------------------------------------- */
-#define arucotag_hist_size 5
+#define arucotag_hist_size 10
 #define arucotag_age_max 10
 
 struct pose6D {
