@@ -265,7 +265,7 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
 
         // Solve PnP for the tag
         vector<Vec3d> translations, rotations;
-        Mat reproj_error;
+        Mat1f reproj_error;  // declare as CV_32FC1 so that solvePnP won't complain, it'll take care of intanciating the size
         solvePnPGeneric((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_IPPE_SQUARE, noArray(), noArray(), reproj_error);
         // solvePnPGeneric((*detect)->corners_marker_cv, corners_image[i], calib->K_cv, calib->D, rotations, translations, false, SOLVEPNP_IPPE_SQUARE);
 
