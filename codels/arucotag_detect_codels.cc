@@ -96,11 +96,11 @@ detect_start(arucotag_ids *ids, const genom_context self)
  * Yields to arucotag_pause_wait, arucotag_poll.
  */
 genom_event
-detect_wait(const arucotag_frame *frame,
-            const arucotag_intrinsics *intrinsics,
+detect_wait(const arucotag_intrinsics *intrinsics,
             const arucotag_extrinsics *extrinsics, float length,
             arucotag_calib_s **calib, const genom_context self)
 {
+    // Wait that length of markers and calibration has been set from services
     if (length > 0 &&
         intrinsics->read(self) == genom_ok && intrinsics->data(self) &&
         extrinsics->read(self) == genom_ok && extrinsics->data(self))

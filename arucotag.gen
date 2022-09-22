@@ -84,7 +84,7 @@ component arucotag {
         codel<start> detect_start(out ::ids)
             yield wait;
 
-        codel<wait> detect_wait(in frame, in intrinsics, in extrinsics, in tag_info.length, out calib)
+        codel<wait> detect_wait(in intrinsics, in extrinsics, in tag_info.length, out calib)
             yield pause::wait, poll;
 
         codel<poll> detect_poll(in stopped, in ports, in frame, inout last_ts)
