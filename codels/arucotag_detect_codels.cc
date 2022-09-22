@@ -93,7 +93,7 @@ detect_start(arucotag_ids *ids, const genom_context self)
 /** Codel detect_wait of task detect.
  *
  * Triggered by arucotag_wait.
- * Yields to arucotag_wait, arucotag_poll.
+ * Yields to arucotag_pause_wait, arucotag_poll.
  */
 genom_event
 detect_wait(const arucotag_frame *frame,
@@ -103,17 +103,14 @@ detect_wait(const arucotag_frame *frame,
 {
     if (length > 0 &&
         intrinsics->read(self) == genom_ok && intrinsics->data(self) &&
-        extrinsics->read(self) == genom_ok && extrinsics->data(self) &&
-        frame->read(self) == genom_ok && frame->data(self) &&
-        frame->data(self)->pixels._length > 0)
+        extrinsics->read(self) == genom_ok && extrinsics->data(self))
     {
         update_calib(intrinsics, extrinsics, calib, self);
         return arucotag_poll;
     }
     else
     {
-        usleep(arucotag_pause_ms*1e3);
-        return arucotag_wait;
+        return arucotag_pause_wait;
     }
 }
 
@@ -128,26 +125,25 @@ detect_poll(bool stopped, const sequence_arucotag_portinfo *ports,
             const arucotag_frame *frame, or_time_ts *last_ts,
             const genom_context self)
 {
-    if (!ports->_length)
+    if (stopped || !ports->_length)
         return arucotag_pause_poll;
 
-    timeval start, stop;
+    timeval start;
     gettimeofday(&start, NULL);
-
-    frame->read(self);
-    if (!stopped && (frame->data(self)->ts.nsec != last_ts->nsec || frame->data(self)->ts.sec != last_ts->sec))
+    if (frame->read(self) == genom_ok && frame->data(self) && frame->data(self)->pixels._length &&
+        (frame->data(self)->ts.nsec != last_ts->nsec || frame->data(self)->ts.sec != last_ts->sec))
     {
         *last_ts = frame->data(self)->ts;
         return arucotag_main;
-
     }
     else
     {
-        // compensate for time spent in read()
+        // compensate for time spent in read() in order to poll at 1kHz
+        timeval stop;
         gettimeofday(&stop, NULL);
-        double dt_ms = (stop.tv_sec + stop.tv_usec*1e-6 - start.tv_sec - start.tv_usec*1e-6)*1e3;
-        if (dt_ms < arucotag_pause_ms)
-            usleep(arucotag_pause_ms - dt_ms);
+        uint32_t dt_us = stop.tv_sec*1e6 + stop.tv_usec - start.tv_sec*1e6 - start.tv_usec;
+        if (dt_us < arucotag_pause_ms*1e3)
+            usleep(arucotag_pause_ms*1e3 - dt_us);
         return arucotag_poll;
     }
 }
