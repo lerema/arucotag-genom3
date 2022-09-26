@@ -346,7 +346,7 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             }
 
             // avoid flips between q and -q
-            if (((*detect)->last_detections[j].history.back().q.coeffs()-C_q_M.coeffs()).norm() > 1)
+            if ((*detect)->last_detections[j].history.back().q.dot(C_q_M) < 0)
                 C_q_M.coeffs() = -C_q_M.coeffs();
 
             (*detect)->last_detections[j].history.push(pose6D(C_p_M, C_q_M));
