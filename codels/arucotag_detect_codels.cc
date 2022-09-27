@@ -287,7 +287,7 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
                 break;
         if (j >= (*detect)->last_detections.size())
         {
-            // If the tag is newly detected, select minimum the minimum error solution and store it as new detection
+            // If the tag is newly detected, select the minimum error solution and store it as new detection
             C_p_M << translations[0][0], translations[0][1], translations[0][2];
             C_q_M = cvaa2eigenquat(rotations[0]);
 
@@ -349,8 +349,6 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
             if ((*detect)->last_detections[j].history.size() > arucotag_hist_size)
                 (*detect)->last_detections[j].history.pop();
         }
-if (std::isnan(C_q_M.coeffs().cwiseAbs().maxCoeff()))
-    std::cout << "NAN DANS CqM" << std::endl;
 
         // Compute covariance
         // See Sec. VI.B in [Jacquet 2020] (10.1109/LRA.2020.3045654)
@@ -371,8 +369,7 @@ if (std::isnan(C_q_M.coeffs().cwiseAbs().maxCoeff()))
             // Stack the Jacobian of projection wrt euclidean coordinates (chain rule) in J
             J.block<2,6>(i*2,0) = J_pix*J_proj;
         }
-if (std::isnan(J.cwiseAbs().maxCoeff()))
-    std::cout << "NAN DANS J" << std::endl;
+
         // First order propagation
         // Cross (pos/rot) covariance is neglected since I dunno how to transform it into pos/quat covariance
         Matrix<double,6,6> cov = s_pix*s_pix * (J.transpose() * J).inverse();
@@ -426,11 +423,8 @@ if (std::isnan(J.cwiseAbs().maxCoeff()))
             J_exp.row(0) = -0.5 * s * u;
             J_exp.block<3,3>(1,0) = s/theta*Matrix3d::Identity() + (c/2 - s/theta) * u*u.transpose();
         }
-if (std::isnan(J_exp.cwiseAbs().maxCoeff()))
-    std::cout << "NAN DANS JEXP" << std::endl;
         Matrix4d cov_q = J_exp * cov_rot * J_exp.transpose();
-if (std::isnan(cov_q.cwiseAbs().maxCoeff()))
-    std::cout << "NAN DANS COVQ" << std::endl;
+
         // Publish
         const char* tagid = to_string((*detect)->ids[i]).c_str();
 

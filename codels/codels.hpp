@@ -70,7 +70,7 @@ struct pose6D {
 };
 struct tag_detection {
     uint16_t id;        // id of detecte tag
-    uint16_t age;       // "age" of detection (0 for current frame, increases by 1 for each past frame)
+    // uint16_t age;       // "age" of detection (0 for current frame, increases by 1 for each past frame)
     queue<pose6D> history;    // history of detections
 };
 
