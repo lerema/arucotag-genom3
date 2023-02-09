@@ -28,6 +28,8 @@
 // rather be added to the "doc" attributes of the genom objects defined in
 // arucotag.gen.
 
+This is a pre-release version of the original work. The original work is available at [redmine](https://redmine.laas.fr/projects/genom-vision/repository/arucotag-genom3).
+
 = arucotag component
 martin.jacquet@laas.fr
 2.1
