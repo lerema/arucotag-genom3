@@ -35,7 +35,7 @@ component arucotag {
     email           "martin.jacquet@laas.fr";
     lang			"c";
     require         "genom3 >= 2.99.26";
-    codels-require  "opencv >= 3.4.7",  /* Or opencv4 >= 4.1.1 */
+    codels-require  "opencv4 >= 4.8",
                     "eigen3";
 
     /* ---- Exceptions ---------------------------------------------------- */
