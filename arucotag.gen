@@ -35,7 +35,7 @@ component arucotag {
     email           "martin.jacquet@laas.fr";
     lang			"c";
     require         "genom3 >= 2.99.26";
-    codels-require  "opencv >= 3.4.7",  /* Or opencv4 >= 4.1.1 */
+    codels-require  "opencv4",  /* Or opencv4 >= 4.1.1 */
                     "eigen3";
 
     /* ---- Exceptions ---------------------------------------------------- */
@@ -58,6 +58,7 @@ component arucotag {
     port in or::sensor::intrinsics      intrinsics;
     port in or::sensor::extrinsics      extrinsics;
 
+    port out or::sensor::frame output;
 
     /* ---- IDS ----------------------------------------------------------- */
     ids {
@@ -90,7 +91,7 @@ component arucotag {
         codel<poll> detect_poll(in stopped, in ports, in frame, inout last_ts)
             yield pause::poll, poll, main;
 
-        codel<main> detect_main(in frame, in tag_info.s_pix, in calib, in drone, inout detect, in ports, out pose, out pixel_pose, in out_frame)
+        codel<main> detect_main(in frame, in tag_info.s_pix, in calib, in drone, inout detect, out output, in ports, out pose, out pixel_pose, in out_frame)
             yield poll, log;
 
         codel<log> detect_log(in detect, in ports, in pose, in pixel_pose, in out_frame, inout log)

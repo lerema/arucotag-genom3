@@ -253,6 +253,28 @@ a|.Data structure
 
 '''
 
+[[output]]
+=== output (out)
+
+
+[role="small", width="50%", float="right", cols="1"]
+|===
+a|.Data structure
+[disc]
+ * `struct ::or::sensor::frame` `output`
+ ** `struct ::or::time::ts` `ts`
+ *** `long` `sec`
+ *** `long` `nsec`
+ ** `boolean` `compressed`
+ ** `unsigned short` `height`
+ ** `unsigned short` `width`
+ ** `unsigned short` `bpp`
+ ** `sequence< octet >` `pixels`
+
+|===
+
+'''
+
 == Services
 
 [[add_marker]]
@@ -446,6 +468,7 @@ a|.Context
 * Reads port `<<frame>>`
 * Reads port `<<intrinsics>>`
 * Reads port `<<extrinsics>>`
+* Updates port `<<output>>`
 |===
 
 '''

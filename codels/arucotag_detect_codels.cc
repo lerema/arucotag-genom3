@@ -158,6 +158,7 @@ genom_event
 detect_main(const arucotag_frame *frame, uint16_t s_pix,
             const arucotag_calib_s *calib, const arucotag_drone *drone,
             arucotag_detector_s **detect,
+            const arucotag_output *output,
             const sequence_arucotag_portinfo *ports,
             const arucotag_pose *pose,
             const arucotag_pixel_pose *pixel_pose, int16_t out_frame,
@@ -226,6 +227,18 @@ detect_main(const arucotag_frame *frame, uint16_t s_pix,
     vector<vector<Point2f>> corners_image;
     // aruco::detectMarkers(cvframe, (*detect)->dict, corners_image, (*detect)->ids, aruco::DetectorParameters::create(), noArray(), calib->K_cv, calib->D);
     aruco::detectMarkers(cvframe, (*detect)->dict, corners_image, (*detect)->ids);
+
+    // Draw detected tags
+    aruco::drawDetectedMarkers(cvframe, corners_image, (*detect)->ids);
+    output->data(self)->width = cvframe.cols;
+    output->data(self)->height = cvframe.rows;
+    output->data(self)->bpp = cvframe.channels();
+    output->data(self)->pixels._length = cvframe.rows * cvframe.cols * cvframe.channels();
+    output->data(self)->pixels._buffer = cvframe.data;
+    output->data(self)->compressed = false;
+    output->data(self)->ts.sec = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    output->data(self)->ts.nsec = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count() % 1000000000;
+    output->write(self);
 
     // Publish empty messages for tracked tags that are not detected
     for (uint16_t i=0; i<ports->_length; i++)
